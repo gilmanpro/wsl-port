@@ -15,7 +15,7 @@
 
 **Opción A — Doble clic (recomendado, sin consola)**
 
-1. Doble clic en `wsl-port.vbs` (o en el acceso directo **wsl-port** del Escritorio).
+1. Doble clic en `dist\wsl-port\wsl-port.exe` (compilado) o en `wsl-port.vbs` / el acceso directo **wsl-port** del Escritorio.
 2. ¡Listo! No se abre ninguna terminal — todo queda en segundo plano.
 
 **Opción B — Línea de comandos**
