@@ -14,20 +14,21 @@ BASE = Path(__file__).resolve().parents[1]
 REPOS = BASE.parent
 WSL_REPO = REPOS / "wsl-manager-gui"
 PF_REPO = REPOS / "port-forwarder-app"
-WSL_EXE = WSL_REPO / ".venv" / "Scripts" / "wsl-manager.exe"
-PF_EXE = PF_REPO / ".venv" / "Scripts" / "port-forwarder.exe"
+# Se delega con pythonw -m (nunca con los launchers de consola del venv):
+# pythonw no tiene consola, asi que ni el CLI ni sus hijos pueden abrir terminal.
+WSL_PY = WSL_REPO / ".venv" / "Scripts" / "pythonw.exe"
+PF_PY = PF_REPO / ".venv" / "Scripts" / "pythonw.exe"
 
 TIMEOUT = 120
 
-# Oculta la consola de los CLIs delegados (sin esto se abren ventanas de
-# terminal en cada llamada: refrescos, status, publish...).
+# Oculta la consola de los CLIs delegados (refuerzo por si el venv falta).
 CREATE_NO_WINDOW = 0x08000000
 
 
 def run_wsl(args: list[str], timeout: int = TIMEOUT) -> subprocess.CompletedProcess:
-    """Ejecuta el CLI de WSL Manager (wsl-manager <args>) sin ventanas."""
+    """Ejecuta el CLI de WSL Manager (pythonw -m src.cli <args>) sin ventanas."""
     return subprocess.run(
-        [str(WSL_EXE), *args], cwd=str(WSL_REPO),
+        [str(WSL_PY), "-m", "src.cli", *args], cwd=str(WSL_REPO),
         capture_output=True, text=True, encoding="utf-8",
         errors="replace", timeout=timeout,
         creationflags=CREATE_NO_WINDOW,
@@ -35,9 +36,9 @@ def run_wsl(args: list[str], timeout: int = TIMEOUT) -> subprocess.CompletedProc
 
 
 def run_pf(args: list[str], timeout: int = TIMEOUT) -> subprocess.CompletedProcess:
-    """Ejecuta el CLI de Port Forwarding (port-forwarder <args>) sin ventanas."""
+    """Ejecuta el CLI de Port Forwarding (pythonw -m src.cli <args>) sin ventanas."""
     return subprocess.run(
-        [str(PF_EXE), *args], cwd=str(PF_REPO),
+        [str(PF_PY), "-m", "src.cli", *args], cwd=str(PF_REPO),
         capture_output=True, text=True, encoding="utf-8",
         errors="replace", timeout=timeout,
         creationflags=CREATE_NO_WINDOW,

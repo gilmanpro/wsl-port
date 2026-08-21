@@ -43,7 +43,7 @@ class MainWindow:
         self._build()
         self._refresh()
         self.root.after(200, self._poll)
-        self.root.after(5000, self._schedule_refresh)
+        self.root.after(15000, self._schedule_refresh)
 
     # -- UI ------------------------------------------------------------------
 
@@ -139,7 +139,7 @@ class MainWindow:
 
     def _schedule_refresh(self) -> None:
         self._refresh()
-        self.root.after(5000, self._schedule_refresh)
+        self.root.after(15000, self._schedule_refresh)
 
     def _apply(self) -> None:
         while True:
@@ -194,5 +194,19 @@ class MainWindow:
 
 
 def run() -> None:
+    if not _single_instance():
+        return
     win = MainWindow()
     win.root.mainloop()
+
+
+_MUTEX = None
+
+
+def _single_instance() -> bool:
+    """Evita abrir dos ventanas de wsl-port a la vez."""
+    import ctypes
+
+    global _MUTEX
+    _MUTEX = ctypes.windll.kernel32.CreateMutexW(None, False, "wsl-port-unicidad")
+    return ctypes.windll.kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
