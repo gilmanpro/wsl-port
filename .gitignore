@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+dist/
+build/
+*.exe
+.env
+secrets.json
+config.json
+*.log
+Thumbs.db
+.DS_Store
