@@ -1,0 +1,80 @@
+# ============================================================
+# .gitignore del workspace — solo contenido local de trabajo.
+# Cada proyecto tiene su propio .gitignore en proyectos/.
+# ============================================================
+
+# --- Carpetas y archivos locales de trabajo (no versionados) ---
+/produccion/
+/documentacion/
+/legacy/
+/proyectos/
+/GUIA-INSTALACION-Y-USO.md
+
+# --- Entornos virtuales ---
+.venv/
+venv/
+env/
+ENV/
+.env/
+.venvs/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy/
+
+# --- Artefactos compilados / empaquetado ---
+dist/
+build/
+*.exe
+*.whl
+*.tar.gz
+*.zip
+
+# --- Secretos y configuracion local ---
+.env
+.env.*
+*.local
+secrets.json
+config.json
+*.pid
+
+# --- Logs ---
+*.log
+logs/
+npm-debug.log*
+
+# --- Editores / IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sln
+*.suo
+*.user
+.vscode-server/
+
+# --- Sistema operativo ---
+Thumbs.db
+Desktop.ini
+.DS_Store
+ehthumbs.db
+
+# --- Otras herramientas ---
+node_modules/
+.pm2/
+.pnp/
+.pnp.js
