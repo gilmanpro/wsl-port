@@ -44,12 +44,15 @@ python cli_runner.py unpublish pub-debian-9000
 ## Uso (ventana)
 
 ```bash
-pythonw run.py
+pythonw run.py          # o doble clic en wsl-port.vbs / el acceso directo
 ```
 
 Pestañas: **Distros WSL** · **Publicar en Internet** (asistente) ·
 **Tunnels / VPS** · **Forwards**. La barra inferior abre los paneles web
 (`:8790` WSL y `:8794` PF).
+
+> Todas las apps y sus CLIs delegados se lanzan **sin consola** (pythonw +
+> CREATE_NO_WINDOW): todo corre en segundo plano, sin ventanas de terminal.
 
 ## Cómo funciona la integración
 
