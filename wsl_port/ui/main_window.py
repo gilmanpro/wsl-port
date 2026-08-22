@@ -222,6 +222,10 @@ class MainWindow:
                    command=self._create_distro_dialog).pack(side="left", padx=2)
         ttk.Button(d_bar, text="Eliminar distro", bootstyle="danger",
                    command=self._delete_selected_distro).pack(side="left", padx=2)
+        ttk.Button(d_bar, text="Exportar...", bootstyle="secondary",
+                   command=self._export_selected_distro).pack(side="left", padx=2)
+        ttk.Button(d_bar, text="Importar...", bootstyle="secondary",
+                   command=self._import_distro_dialog).pack(side="left", padx=2)
         self.distro_tree = _make_tree(d_tab, ["Distro", "Estado", "IP", "Version"],
                                       [200, 100, 160, 80])
 
@@ -796,6 +800,76 @@ class MainWindow:
                 messagebox.showinfo("Eliminar distro", f"Distro '{name}' eliminada")
             else:
                 messagebox.showerror("Eliminar distro", f"Error: {r.get('error')}")
+            self._q.put({"_action": "refresh"})
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _export_selected_distro(self) -> None:
+        """Exportar la distro WSL seleccionada a un archivo .tar."""
+        name = self._get_selected_distro()
+        if not name:
+            return
+        from tkinter import messagebox
+        target = filedialog.asksaveasfilename(
+            title=f"Exportar distro '{name}'",
+            defaultextension=".tar",
+            filetypes=[("TAR files", "*.tar"), ("All files", "*.*")],
+            initialfile=f"{name}.tar",
+        )
+        if not target:
+            return
+
+        def _work():
+            messagebox.showinfo("Exportar", f"Exportando '{name}'...\nEsto puede tardar varios minutos.")
+            r = core.export_distro(name, target)
+            if r.get("ok"):
+                messagebox.showinfo("Exportar", f"Distro '{name}' exportada a:\n{target}")
+            else:
+                messagebox.showerror("Exportar", f"Error: {r.get('error')}")
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _import_distro_dialog(self) -> None:
+        """Importar una distro WSL desde un archivo .tar."""
+        from tkinter import messagebox
+        source = filedialog.askopenfilename(
+            title="Seleccionar archivo .tar para importar",
+            filetypes=[("TAR files", "*.tar"), ("All files", "*.*")],
+        )
+        if not source:
+            return
+
+        def _validate(data):
+            if not data.get("name", "").strip():
+                raise ValueError("El nombre es obligatorio")
+            if not data.get("install_dir", "").strip():
+                raise ValueError("El directorio de instalacion es obligatorio")
+
+        fields = [
+            ("name", "Nombre de la nueva distro", "entry"),
+            ("install_dir", "Directorio de instalacion", "entry"),
+        ]
+        dlg = _FormDialog(self.root, "Importar distro", fields,
+                          validate=_validate, size=(400, 200))
+        # Default install dir
+        import os
+        default_dir = os.path.join(os.environ.get("LOCALAPPDATA", ""), "WSL", "distros")
+        dlg._vars["install_dir"].set(default_dir)
+
+        self.root.wait_window(dlg)
+        if not dlg.result:
+            return
+
+        distro_name = dlg.result["name"].strip()
+        install_dir = dlg.result["install_dir"].strip()
+
+        def _work():
+            messagebox.showinfo("Importar", f"Importando '{distro_name}'...\nEsto puede tardar varios minutos.")
+            r = core.import_distro(source, distro_name, install_dir)
+            if r.get("ok"):
+                messagebox.showinfo("Importar", f"Distro '{distro_name}' importada correctamente")
+            else:
+                messagebox.showerror("Importar", f"Error: {r.get('error')}")
             self._q.put({"_action": "refresh"})
 
         threading.Thread(target=_work, daemon=True).start()
