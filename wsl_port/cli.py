@@ -50,7 +50,7 @@ def cmd_status(args) -> int:
         tr = ""
         if tf:
             tr = (f"  rx {_fmt_bytes(tf.get('rx_bytes',0))} tx {_fmt_bytes(tf.get('tx_bytes',0))}"
-                  f" ↓{_fmt_bytes(tf.get('rx_rate_bps',0))}/s ↑{_fmt_bytes(tf.get('tx_rate_bps',0))}/s")
+                  f" dl:{_fmt_bytes(tf.get('rx_rate_bps',0))}/s ul:{_fmt_bytes(tf.get('tx_rate_bps',0))}/s")
         print(f"  tun {t.get('id','?'):<18} {t.get('state','?'):<9} "
               f"local={t.get('local')} remote={','.join(t.get('remote') or [])}{tr}")
     for f in st["forwards"]:
