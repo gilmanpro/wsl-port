@@ -5,15 +5,20 @@ from unittest import mock
 
 import pytest
 
-from wsl_port import publish as pub
+from wsl_port import core
 
 
-def _proc(stdout: str = "", code: int = 0):
-    p = mock.Mock()
-    p.stdout = stdout
-    p.stderr = ""
-    p.returncode = code
-    return p
+def test_tunnel_id_sanitiza():
+    assert core.tunnel_id_for("Debian", 9000) == "pub-debian-9000"
+    assert core.tunnel_id_for("ubuntu dev", 80) == "pub-ubuntu-dev-80"
+
+
+def test_check_local_ok_y_falla():
+    with mock.patch("socket.create_connection") as cc:
+        cc.return_value.__enter__ = lambda s: s
+        assert core.check_local(9000)
+        cc.side_effect = OSError("no")
+        assert not core.check_local(9000)
 
 
 @pytest.fixture
@@ -27,61 +32,63 @@ def env(monkeypatch):
         lambda: [{"id": "vps1", "host": "VPS_IP_REDACTED", "user": "debian", "port": 10000}],
     )
     monkeypatch.setattr("wsl_port.core.tunnels", lambda: [])
-    calls: list[list[str]] = []
+    added = []
 
-    def fake_run_pf(args, timeout=120):
-        calls.append(list(args))
-        return _proc(stdout="{}")
+    def fake_add_tunnel(tun_id, vps_id, local_host, local_port, remote_host="0.0.0.0", remote_port=80, tunnel_type="ssh"):
+        added.append({"id": tun_id, "vps_id": vps_id, "local_host": local_host,
+                      "local_port": local_port, "remote_host": remote_host,
+                      "remote_port": remote_port})
+        return {"ok": True}
 
-    monkeypatch.setattr("wsl_port.core.run_pf", fake_run_pf)
-    return calls
+    def fake_start_tunnel(tun_id):
+        return {"ok": True}
 
-
-def test_tunnel_id_sanitiza():
-    assert pub.tunnel_id("Debian", 9000) == "pub-debian-9000"
-    assert pub.tunnel_id("ubuntu dev", 80) == "pub-ubuntu-dev-80"
-
-
-def test_check_local_ok_y_falla():
-    import socket
-
-    with mock.patch("socket.create_connection") as cc:
-        cc.return_value.__enter__ = lambda s: s
-        assert pub.check_local(9000)
-        cc.side_effect = OSError("no")
-        assert not pub.check_local(9000)
+    monkeypatch.setattr("wsl_port.core.add_tunnel", fake_add_tunnel)
+    monkeypatch.setattr("wsl_port.core.start_tunnel", fake_start_tunnel)
+    return added
 
 
 def test_publish_crea_y_arranca_tunel(env, monkeypatch):
-    monkeypatch.setattr("wsl_port.publish.check_local", lambda p, host="127.0.0.1", timeout=5.0: True)
-    r = pub.publish("Debian", 9000, "vps1", 18097)
+    monkeypatch.setattr("wsl_port.core.check_local", lambda p, host="127.0.0.1", timeout=5.0: True)
+    r = core.publish("Debian", 9000, "vps1", 18097)
     assert r["tunnel_id"] == "pub-debian-9000"
     assert r["public_url"] == "http://VPS_IP_REDACTED:18097"
-    add = [c for c in env if c[0] == "tunnels" and c[1] == "add"]
-    start = [c for c in env if c[0] == "tunnels" and c[1] == "start"]
-    assert add and "--local" in add[0] and "127.0.0.1:9000" in add[0]
-    assert "--remote" in add[0] and "0.0.0.0:18097" in add[0]
-    assert start and start[0][2] == "pub-debian-9000"
+    assert len(env) == 1
+    assert env[0]["local_port"] == 9000
+    assert env[0]["remote_port"] == 18097
 
 
 def test_publish_distro_inexistente(env, monkeypatch):
-    monkeypatch.setattr("wsl_port.publish.check_local", lambda *a, **k: True)
+    monkeypatch.setattr("wsl_port.core.check_local", lambda *a, **k: True)
     with pytest.raises(ValueError, match="no encontrada"):
-        pub.publish("NoExiste", 9000, "vps1", 18097)
+        core.publish("NoExiste", 9000, "vps1", 18097)
 
 
 def test_publish_vps_inexistente(env, monkeypatch):
-    monkeypatch.setattr("wsl_port.publish.check_local", lambda *a, **k: True)
+    monkeypatch.setattr("wsl_port.core.check_local", lambda *a, **k: True)
     with pytest.raises(ValueError, match="VPS"):
-        pub.publish("Debian", 9000, "vps-zzz", 18097)
+        core.publish("Debian", 9000, "vps-zzz", 18097)
 
 
 def test_publish_sin_servicio_local(env, monkeypatch):
-    monkeypatch.setattr("wsl_port.publish.check_local", lambda *a, **k: False)
+    monkeypatch.setattr("wsl_port.core.check_local", lambda *a, **k: False)
     with pytest.raises(ValueError, match="no hay servicio"):
-        pub.publish("Debian", 9000, "vps1", 18097)
+        core.publish("Debian", 9000, "vps1", 18097)
 
 
 def test_unpublish(env):
-    assert pub.unpublish("pub-debian-9000")
-    assert env[-1][:2] == ["tunnels", "remove"]
+    monkeypatch_calls = []
+
+    def fake_stop(tid):
+        monkeypatch_calls.append(("stop", tid))
+        return {"ok": True}
+
+    def fake_remove(tid):
+        monkeypatch_calls.append(("remove", tid))
+        return {"ok": True}
+
+    with mock.patch("wsl_port.core.stop_tunnel", fake_stop), \
+         mock.patch("wsl_port.core.remove_tunnel", fake_remove):
+        assert core.unpublish("pub-debian-9000")
+        assert ("stop", "pub-debian-9000") in monkeypatch_calls
+        assert ("remove", "pub-debian-9000") in monkeypatch_calls

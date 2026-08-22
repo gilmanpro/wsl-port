@@ -22,7 +22,7 @@ def _fmt_bytes(n) -> str:
         if n < 1024 or u == "TB":
             return f"{n:.1f} {u}"
         n /= 1024
-    return f"{n:.1f} {u}"
+    return f"{n:.1f} TB"
 
 
 def _make_tree(parent, columns: list[str], widths: list[int]) -> _ttk.Treeview:
@@ -37,7 +37,7 @@ def _make_tree(parent, columns: list[str], widths: list[int]) -> _ttk.Treeview:
 class MainWindow:
     def __init__(self) -> None:
         self.root = ttk.Window(themename="darkly", title="wsl-port — WSL + Port Forwarding")
-        self.root.geometry("1060x720")
+        self.root.geometry("1100x750")
         self.root.minsize(900, 560)
         self._q: queue.Queue = queue.Queue()
         self._build()
@@ -74,10 +74,11 @@ class MainWindow:
         ttk.Button(d_bar, text="Refrescar", bootstyle="success",
                    command=self._refresh).pack(side="left", padx=2)
         ttk.Button(d_bar, text="Iniciar todas", bootstyle="info",
-                   command=lambda: self._wsl(["start", "--all"])).pack(side="left", padx=2)
+                   command=self._start_all_distros).pack(side="left", padx=2)
         ttk.Button(d_bar, text="Apagar todas", bootstyle="danger",
-                   command=lambda: self._wsl(["stop-all"])).pack(side="left", padx=2)
-        self.distro_tree = _make_tree(d_tab, ["Distro", "Estado", "IP", "RAM %"], [160, 90, 150, 90])
+                   command=self._shutdown_all_distros).pack(side="left", padx=2)
+        self.distro_tree = _make_tree(d_tab, ["Distro", "Estado", "IP", "Version"],
+                                      [180, 100, 160, 80])
 
         # -- pestana Publicar ----------------------------------------------------
         self.publish_tab = PublishTab(nb)
@@ -86,15 +87,50 @@ class MainWindow:
         # -- pestana Tunnels / VPS -----------------------------------------------
         t_tab = ttk.Frame(nb)
         nb.add(t_tab, text="Tunnels / VPS")
-        self.tun_tree = _make_tree(t_tab, ["ID", "VPS", "Local", "Remoto", "Estado", "Tráfico"],
-                                   [140, 110, 130, 160, 90, 190])
-        self.vps_tree = _make_tree(t_tab, ["VPS", "Host", "Usuario", "Puerto"], [140, 200, 120, 80])
+        tun_bar = ttk.Frame(t_tab)
+        tun_bar.pack(fill="x", padx=6, pady=6)
+        ttk.Button(tun_bar, text="Refrescar", bootstyle="success",
+                   command=self._refresh).pack(side="left", padx=2)
+        self.tun_tree = _make_tree(t_tab, ["ID", "Tipo", "VPS", "Local", "Remoto", "Estado", "Trafico"],
+                                   [140, 70, 120, 130, 160, 80, 200])
+        ttk.Separator(t_tab).pack(fill="x", padx=6, pady=4)
+        ttk.Label(t_tab, text="Servidores VPS", style="Header.TLabel").pack(anchor="w", padx=6)
+        vps_bar = ttk.Frame(t_tab)
+        vps_bar.pack(fill="x", padx=6, pady=4)
+        ttk.Button(vps_bar, text="Nuevo VPS...", bootstyle="info",
+                   command=self._add_vps_dialog).pack(side="left", padx=2)
+        ttk.Button(vps_bar, text="Eliminar VPS", bootstyle="danger",
+                   command=self._remove_vps_selected).pack(side="left", padx=2)
+        self.vps_tree = _make_tree(t_tab, ["VPS", "Host", "Usuario", "Puerto"],
+                                   [150, 220, 130, 80])
 
         # -- pestana Forwards ----------------------------------------------------
         f_tab = ttk.Frame(nb)
         nb.add(f_tab, text="Forwards")
-        self.fwd_tree = _make_tree(f_tab, ["ID", "Listen", "Distro", "WSL Port", "IP", "Estado"],
-                                   [140, 90, 140, 90, 130, 90])
+        fwd_bar = ttk.Frame(f_tab)
+        fwd_bar.pack(fill="x", padx=6, pady=6)
+        ttk.Button(fwd_bar, text="Refrescar", bootstyle="success",
+                   command=self._refresh).pack(side="left", padx=2)
+        ttk.Button(fwd_bar, text="Reaplicar todos", bootstyle="info",
+                   command=self._apply_forwards).pack(side="left", padx=2)
+        ttk.Button(fwd_bar, text="Limpiar todos", bootstyle="danger",
+                   command=self._clear_forwards).pack(side="left", padx=2)
+        self.fwd_tree = _make_tree(f_tab, ["ID", "Listen", "Distro", "WSL Port", "Proto", "Estado"],
+                                   [150, 90, 150, 90, 70, 100])
+
+        # -- pestana Logs --------------------------------------------------------
+        l_tab = ttk.Frame(nb)
+        nb.add(l_tab, text="Logs")
+        self.log_text = tk.Text(l_tab, font=("Consolas", 9), bg="#17191d", fg="#c9d1d9",
+                                state="disabled", wrap="word")
+        self.log_text.pack(fill="both", expand=True, padx=6, pady=6)
+        ttk.Button(l_tab, text="Refrescar logs", bootstyle="success",
+                   command=self._refresh_logs).pack(anchor="w", padx=6, pady=(0, 6))
+
+        # -- pestana Ajustes -----------------------------------------------------
+        settings_tab = ttk.Frame(nb)
+        nb.add(settings_tab, text="Ajustes")
+        self._build_settings_tab(settings_tab)
 
         # -- barra inferior ------------------------------------------------------
         ttk.Separator(self.root).pack(fill="x")
@@ -102,38 +138,158 @@ class MainWindow:
         bar.pack(fill="x", side="bottom")
         self.status_var = tk.StringVar(value="cargando...")
         ttk.Label(bar, textvariable=self.status_var, style="Muted.TLabel").pack(side="left")
-        ttk.Button(bar, text="Panel web WSL (8790)", bootstyle="secondary",
-                   command=lambda: webbrowser.open("http://127.0.0.1:8790")).pack(side="right", padx=2)
-        ttk.Button(bar, text="Panel web PF (8794)", bootstyle="secondary",
-                   command=lambda: webbrowser.open("http://127.0.0.1:8794")).pack(side="right", padx=2)
+
+    def _build_settings_tab(self, parent) -> None:
+        """Pestana de ajustes."""
+        frame = ttk.Frame(parent, padding=12)
+        frame.pack(fill="both", expand=True)
+
+        row = 0
+        ttk.Label(frame, text="General", style="Header.TLabel").grid(
+            row=row, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        row += 1
+
+        ttk.Label(frame, text="Tema:").grid(row=row, column=0, sticky="w", pady=3)
+        self.theme_var = tk.StringVar(value="darkly")
+        ttk.Combobox(frame, textvariable=self.theme_var, values=[
+            "darkly", "cosmo", "flatly", "journal", "litera", "lumen",
+            "minty", "pulse", "sandstone", "united", "yeti",
+        ], width=15, state="readonly").grid(row=row, column=1, sticky="w", padx=6, pady=3)
+        row += 1
+
+        ttk.Label(frame, text="Panel web puerto:").grid(row=row, column=0, sticky="w", pady=3)
+        self.web_port_var = tk.StringVar(value="8780")
+        ttk.Entry(frame, textvariable=self.web_port_var, width=8).grid(
+            row=row, column=1, sticky="w", padx=6, pady=3)
+        row += 1
+
+        ttk.Label(frame, text="API puerto:").grid(row=row, column=0, sticky="w", pady=3)
+        self.api_port_var = tk.StringVar(value="8781")
+        ttk.Entry(frame, textvariable=self.api_port_var, width=8).grid(
+            row=row, column=1, sticky="w", padx=6, pady=3)
+        row += 1
+
+        ttk.Label(frame, text="MCP puerto:").grid(row=row, column=0, sticky="w", pady=3)
+        self.mcp_port_var = tk.StringVar(value="8782")
+        ttk.Entry(frame, textvariable=self.mcp_port_var, width=8).grid(
+            row=row, column=1, sticky="w", padx=6, pady=3)
+        row += 1
+
+        ttk.Button(frame, text="Guardar ajustes", bootstyle="success",
+                   command=self._save_settings).grid(row=row, column=0, columnspan=2, pady=12)
+
+    def _save_settings(self) -> None:
+        """Guardar ajustes desde la pestana."""
+        try:
+            store = core.pf_store()
+            store.cfg.ui.web_panel_port = int(self.web_port_var.get())
+            store.cfg.api.port = int(self.api_port_var.get())
+            store.cfg.mcp.port = int(self.mcp_port_var.get())
+            store.save()
+            from tkinter import messagebox
+            messagebox.showinfo("Ajustes", "Ajustes guardados correctamente")
+        except Exception as e:
+            from tkinter import messagebox
+            messagebox.showerror("Ajustes", f"Error: {e}")
+
+    # -- acciones --------------------------------------------------------------
+
+    def _start_all_distros(self) -> None:
+        def _work():
+            for d in core.distros():
+                if not d.get("running"):
+                    core.start_distro(d["name"])
+            self._q.put({"_action": "refresh"})
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _shutdown_all_distros(self) -> None:
+        def _work():
+            core.shutdown_all()
+            self._q.put({"_action": "refresh"})
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _apply_forwards(self) -> None:
+        def _work():
+            core.apply_forwards()
+            self._q.put({"_action": "refresh"})
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _clear_forwards(self) -> None:
+        from tkinter import messagebox
+        if messagebox.askyesno("Limpiar forwards", "Eliminar TODOS los forwards de netsh?"):
+            def _work():
+                core.clear_forwards()
+                self._q.put({"_action": "refresh"})
+            threading.Thread(target=_work, daemon=True).start()
+
+    def _add_vps_dialog(self) -> None:
+        """Dialogo para agregar VPS."""
+        from tkinter import simpledialog, messagebox
+        vps_id = simpledialog.askstring("Nuevo VPS", "ID del VPS:")
+        if not vps_id:
+            return
+        host = simpledialog.askstring("Nuevo VPS", "Host del VPS:")
+        if not host:
+            return
+        user = simpledialog.askstring("Nuevo VPS", "Usuario SSH:", initialvalue="debian")
+        port = simpledialog.askinteger("Nuevo VPS", "Puerto SSH:", initialvalue=22)
+        r = core.add_vps(vps_id, host, user or "", port or 22)
+        if r.get("ok"):
+            messagebox.showinfo("VPS", f"VPS '{vps_id}' creado")
+            self._refresh()
+        else:
+            messagebox.showerror("VPS", f"Error: {r.get('error')}")
+
+    def _remove_vps_selected(self) -> None:
+        from tkinter import messagebox
+        sel = self.vps_tree.selection()
+        if not sel:
+            messagebox.showwarning("VPS", "Selecciona un VPS primero")
+            return
+        vps_id = self.vps_tree.item(sel[0])["values"][0]
+        if messagebox.askyesno("Eliminar VPS", f"Eliminar VPS '{vps_id}'?"):
+            r = core.remove_vps(str(vps_id))
+            if r.get("ok"):
+                self._refresh()
+            else:
+                messagebox.showerror("VPS", f"Error: {r.get('error')}")
+
+    def _refresh_logs(self) -> None:
+        """Cargar ultimas lineas del log."""
+        try:
+            from wsl_port.vendor.port_forwarder.utils.path import logs_dir
+            log_file = logs_dir() / "port-forwarder.log"
+            if log_file.exists():
+                text = log_file.read_text(encoding="utf-8", errors="replace")
+                lines = text.splitlines()[-200:]
+                self.log_text.config(state="normal")
+                self.log_text.delete("1.0", "end")
+                self.log_text.insert("1.0", "\n".join(lines))
+                self.log_text.config(state="disabled")
+        except Exception:
+            pass
 
     # -- datos / refresco ---------------------------------------------------------
-
-    def _wsl(self, args: list[str]) -> None:
-        core.run_wsl(args)
-        self._refresh()
 
     def _work(self):
         try:
             return core.status()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return {"error": str(e)}
 
     def _refresh(self) -> None:
         threading.Thread(target=self._worker, daemon=True).start()
 
     def _worker(self) -> None:
-        # El hilo de fondo SOLO publica en la cola; el hilo principal de
-        # tkinter consume (_poll -> _apply), sin tocar widgets desde aqui.
         try:
             self._q.put(self._work())
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             self._q.put({"error": str(e)})
 
     def _poll(self) -> None:
         try:
             self._apply()
-        except Exception:  # noqa: BLE001 - nunca romper el loop de la UI
+        except Exception:
             pass
         self.root.after(200, self._poll)
 
@@ -147,24 +303,28 @@ class MainWindow:
                 st = self._q.get_nowait()
             except queue.Empty:
                 return
+            if "_action" in st:
+                if st["_action"] == "refresh":
+                    self._refresh()
+                continue
             if "error" in st:
                 self.status_var.set(f"error: {st['error']}")
                 continue
             up = sum(1 for d in st["distros"] if d.get("running"))
             tun_ok = sum(1 for t in st["tunnels"] if t.get("state") == "running")
             self.header_status.configure(
-                text=f"distros {up}/{len(st['distros'])} · túneles {tun_ok}/{len(st['tunnels'])}"
+                text=f"distros {up}/{len(st['distros'])} · tuneles {tun_ok}/{len(st['tunnels'])}"
                      + (" · MANTENIMIENTO" if st["maintenance"] else ""))
 
             self._fill(self.distro_tree, [
                 [d.get("name", "?"), d.get("state", "?"), d.get("ip") or "-",
-                 f"{d.get('ram_percent') or '-'}"]
+                 str(d.get("version", "?"))]
                 for d in st["distros"]
             ])
             self._fill(self.tun_tree, [
-                [t.get("id", "?"), t.get("vps_id", "?"), t.get("local", "?"),
-                 ", ".join(t.get("remote") or []), t.get("state", "?"),
-                 self._fmt_traffic(t.get("traffic"))]
+                [t.get("id", "?"), t.get("type", "ssh"), t.get("vps_id", "?"),
+                 t.get("local", "?"), ", ".join(t.get("remote") or []),
+                 t.get("state", "?"), self._fmt_traffic(t.get("traffic"))]
                 for t in st["tunnels"]
             ])
             self._fill(self.vps_tree, [
@@ -174,7 +334,7 @@ class MainWindow:
             ])
             self._fill(self.fwd_tree, [
                 [f.get("id", "?"), str(f.get("listen_port", "?")), f.get("wsl_distro", "?"),
-                 str(f.get("wsl_port", "?")), f.get("ip") or "-", f.get("state", "?")]
+                 str(f.get("wsl_port", "?")), f.get("protocol", "?"), f.get("state", "?")]
                 for f in st["forwards"]
             ])
             self.publish_tab.refresh_options()
@@ -189,8 +349,8 @@ class MainWindow:
     def _fmt_traffic(self, tf) -> str:
         if not tf:
             return "-"
-        return (f"rx {_fmt_bytes(tf['rx_bytes'])} tx {_fmt_bytes(tf['tx_bytes'])}"
-                f" ↓{_fmt_bytes(tf['rx_rate_bps'])}/s ↑{_fmt_bytes(tf['tx_rate_bps'])}/s")
+        return (f"rx {_fmt_bytes(tf.get('rx_bytes',0))} tx {_fmt_bytes(tf.get('tx_bytes',0))}"
+                f" {_fmt_bytes(tf.get('rx_rate_bps',0))}/s {_fmt_bytes(tf.get('tx_rate_bps',0))}/s")
 
 
 def run() -> None:
