@@ -16,7 +16,7 @@ from pathlib import Path
 
 def _setup_logging(level: str = "INFO") -> None:
     from wsl_port.vendor.port_forwarder.core.logger import setup_logging
-    setup_logging(level=getattr(logging, level, logging.INFO), console=True)
+    setup_logging(level=level, console=True)
 
 
 def run_gui(minimized: bool = False, tray_only: bool = False) -> None:

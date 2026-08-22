@@ -44,6 +44,9 @@ class MainWindow:
         self._refresh()
         self.root.after(200, self._poll)
         self.root.after(15000, self._schedule_refresh)
+        # Ensure window is visible and focused
+        self.root.lift()
+        self.root.focus_force()
 
     # -- UI ------------------------------------------------------------------
 
