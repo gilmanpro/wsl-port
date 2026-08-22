@@ -571,6 +571,8 @@ def start_tunnel(tun_id: str) -> dict:
             provider.start(tun, vps)
         else:
             provider.start(tun)
+        # Remove from manually stopped set so supervisor can manage it again
+        sup.tunnel_manually_stopped.discard(tun_id)
         return {"ok": True, "message": f"Tunnel '{tun_id}' iniciado"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -587,6 +589,8 @@ def stop_tunnel(tun_id: str) -> dict:
         provider = sup.ssh if tun.type == "ssh" else _provider_for(tun)
         if provider:
             provider.stop(tun)
+        # Mark as manually stopped so supervisor doesn't restart it
+        sup.tunnel_manually_stopped.add(tun_id)
         return {"ok": True, "message": f"Tunnel '{tun_id}' detenido"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
