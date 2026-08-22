@@ -1102,25 +1102,37 @@ class MainWindow:
 
         fields = [
             ("id", "ID del forward", "entry"),
+            ("listen_address", "Direccion listen", "combo"),
             ("listen_port", "Puerto listen (Windows)", "int"),
             ("distro", "Distro WSL", "combo"),
             ("wsl_port", "Puerto WSL", "int"),
             ("protocol", "Protocolo", "combo"),
         ]
-        dlg = _FormDialog(self.root, "Nuevo Forward", fields, validate=_validate, size=(420, 350))
+        dlg = _FormDialog(self.root, "Nuevo Forward", fields, validate=_validate, size=(420, 380))
         dlg.set_combo_values("distro", distro_names)
         dlg.set_combo_values("protocol", ["tcp", "udp"])
+        dlg.set_combo_values("listen_address", [
+            "0.0.0.0 (todas)",
+            "127.0.0.1 (loopback 1)",
+            "127.0.0.2 (loopback 2)",
+            "127.0.0.3 (loopback 3)",
+            "127.0.0.4 (loopback 4)",
+        ])
 
         self.root.wait_window(dlg)
         if not dlg.result:
             return
         data = dlg.result
+        # Parse listen address
+        listen_addr = data.get("listen_address", "0.0.0.0 (todas)")
+        listen_addr = listen_addr.split(" ")[0].strip()  # Extract IP from "0.0.0.0 (todas)"
         r = core.add_forward(
             fwd_id=data["id"].strip(),
             listen_port=int(data["listen_port"]),
             wsl_distro=data["distro"].strip(),
             wsl_port=int(data["wsl_port"]),
             protocol=data.get("protocol", "tcp") or "tcp",
+            listen_address=listen_addr,
         )
         from tkinter import messagebox
         if r.get("ok"):

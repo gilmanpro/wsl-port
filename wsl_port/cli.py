@@ -274,7 +274,8 @@ def cmd_forwards_list(args) -> int:
 def cmd_forwards_add(args) -> int:
     from . import core
     r = core.add_forward(args.id, args.listen_port, args.distro, args.wsl_port,
-                         args.protocol, not args.no_auto_apply)
+                         args.protocol, not args.no_auto_apply,
+                         getattr(args, 'listen_address', '0.0.0.0'))
     print(r.get("message", r.get("error", "ok")))
     return 0 if r.get("ok") else 1
 
@@ -783,6 +784,8 @@ def build_parser() -> argparse.ArgumentParser:
     fwa = fw_sub.add_parser("add", help="Agregar forward")
     fwa.add_argument("--id", required=True)
     fwa.add_argument("--listen-port", type=int, required=True)
+    fwa.add_argument("--listen-address", default="0.0.0.0",
+                     help="Direccion de escucha (ej: 127.0.0.1, 127.0.0.2, 0.0.0.0)")
     fwa.add_argument("--distro", required=True)
     fwa.add_argument("--wsl-port", type=int, required=True)
     fwa.add_argument("--protocol", choices=["tcp", "udp"], default="tcp")

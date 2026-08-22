@@ -389,14 +389,15 @@ def forwards() -> list[dict]:
 
 
 def add_forward(fwd_id: str, listen_port: int, wsl_distro: str, wsl_port: int,
-                protocol: str = "tcp", auto_apply: bool = True) -> dict:
+                protocol: str = "tcp", auto_apply: bool = True,
+                listen_address: str = "0.0.0.0") -> dict:
     try:
         from wsl_port.vendor.port_forwarder.core.config import Forward, HealthCheck
         store = pf_store()
         fwd = Forward(
-            id=fwd_id, listen_port=listen_port, wsl_distro=wsl_distro,
-            wsl_port=wsl_port, protocol=protocol, auto_apply=auto_apply,
-            health_check=HealthCheck(),
+            id=fwd_id, listen_port=listen_port, listen_address=listen_address,
+            wsl_distro=wsl_distro, wsl_port=wsl_port, protocol=protocol,
+            auto_apply=auto_apply, health_check=HealthCheck(),
         )
         store.add_forward(fwd)
         return {"ok": True, "message": f"Forward '{fwd_id}' creado"}
