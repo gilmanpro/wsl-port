@@ -124,16 +124,92 @@ tun-openclaw-web   ssh  vps=vps1 de canada  local=127.0.0.1:8080  remote=0.0.0.0
 
 | URL | Estado | Respuesta |
 |---|---|---|
-| http://VPS_IP_REDACTED:18080 | ✅ OK | HTML con "Debian" |
-| http://VPS_IP_REDACTED:28080 | ✅ OK | HTML con "Debian" |
+| http://VPS_IP_REDACTED:18080 | ✅ OK | HTML con "Servidor de Prueba" |
+| http://VPS_IP_REDACTED:28080 | ✅ OK | HTML con "Servidor de Prueba" |
+
+### Respuestas HTTP Reales
+
+**Debian (http://VPS_IP_REDACTED:18080):**
+```html
+<!DOCTYPE html>
+<html>
+<head><title>Test Server</title></head>
+<body style="font-family: Arial; background: #1a1a2e; color: #eee; padding: 40px;">
+<h1 style="color: #00d4ff;">Servidor de Prueba</h1>
+<table style="border-collapse: collapse; width: 50%;">
+<tr><td>Hostname</td><td>Mini-pc</td></tr>
+<tr><td>IP Interna</td><td>127.0.1.1</td></tr>
+<tr><td>Timestamp</td><td>2026-08-22 18:11:04</td></tr>
+</table>
+</body></html>
+```
+
+**debian-openclaw1 (http://VPS_IP_REDACTED:28080):**
+```html
+<!DOCTYPE html>
+<html>
+<head><title>Test Server</title></head>
+<body style="font-family: Arial; background: #1a1a2e; color: #eee; padding: 40px;">
+<h1 style="color: #00d4ff;">Servidor de Prueba</h1>
+<table style="border-collapse: collapse; width: 50%;">
+<tr><td>Hostname</td><td>Mini-pc</td></tr>
+<tr><td>IP Interna</td><td>127.0.1.1</td></tr>
+<tr><td>Timestamp</td><td>2026-08-22 18:11:05</td></tr>
+</table>
+</body></html>
+```
 
 ---
 
 ## Tráfico de los Tunnels
 
 ```
-tun-debian-web:    rx 346.7 KB  tx 456.8 KB
-tun-openclaw-web:  rx 346.7 KB  tx 456.8 KB
+tun-debian-web:    rx 346.8 KB  tx 456.9 KB
+tun-openclaw-web:  rx 346.8 KB  tx 456.9 KB
+```
+
+---
+
+## Notas Importantes
+
+### Servidores deben estar corriendo
+
+Los servidores de prueba en las distros WSL deben estar ejecutándose para que los tunnels funcionen. Si los servidores se detienen, los tunnels seguirán activos pero no habrá servicio disponible.
+
+**Para verificar que los servidores están corriendo:**
+```bash
+# En Debian
+wsl -d Debian -- bash -c "ss -tlnp | grep 8080"
+
+# En debian-openclaw1
+wsl -d debian-openclaw1 -- bash -c "ss -tlnp | grep 8080"
+```
+
+### Tunnels deben estar activos
+
+Los tunnels SSH deben estar en estado "running" para que el tráfico fluya correctamente.
+
+**Para verificar el estado de los tunnels:**
+```bash
+wsl-port tunnels list
+```
+
+### Reiniciar servidores y tunnels
+
+Si algo no funciona, seguir estos pasos:
+
+```bash
+# 1. Iniciar servidores en las distros
+wsl -d Debian -- python3 /tmp/test_server.py &
+wsl -d debian-openclaw1 -- python3 /tmp/test_server.py &
+
+# 2. Iniciar tunnels
+wsl-port tunnels start tun-debian-web
+wsl-port tunnels start tun-openclaw-web
+
+# 3. Verificar
+wsl-port tunnels list
+wsl-port health check
 ```
 
 ---
@@ -183,4 +259,5 @@ wsl-port health check
 ---
 
 **Reporte generado por wsl-port v1.0**  
-**Fecha:** 2026-08-22 18:05
+**Fecha:** 2026-08-22 18:11  
+**Última actualización:** 2026-08-22 18:11
