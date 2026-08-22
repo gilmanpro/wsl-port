@@ -16,6 +16,38 @@ from .publish_tab import PublishTab
 
 _FONT = "Segoe UI"
 
+_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+_AUTOSTART_NAME = "wsl-port"
+
+
+def _autostart_command() -> str:
+    import sys
+    return f'wscript.exe "{Path(sys.executable).parent.parent / "wsl-port.vbs"}"'
+
+
+def autostart_active() -> bool:
+    try:
+        from winreg import HKEY_CURRENT_USER, OpenKey, QueryValueEx
+        with OpenKey(HKEY_CURRENT_USER, _RUN_KEY) as k:
+            return QueryValueEx(k, _AUTOSTART_NAME)[0] == _autostart_command()
+    except Exception:
+        return False
+
+
+def _set_autostart(active: bool) -> None:
+    try:
+        from winreg import HKEY_CURRENT_USER, CreateKey, DeleteValue, SetValueEx
+        with CreateKey(HKEY_CURRENT_USER, _RUN_KEY) as k:
+            if active:
+                SetValueEx(k, _AUTOSTART_NAME, 0, 1, _autostart_command())
+            else:
+                try:
+                    DeleteValue(k, _AUTOSTART_NAME)
+                except OSError:
+                    pass
+    except Exception:
+        pass
+
 
 def _fmt_bytes(n) -> str:
     n = float(n or 0)
@@ -272,51 +304,353 @@ class MainWindow:
         frame = ttk.Frame(parent, padding=12)
         frame.pack(fill="both", expand=True)
 
+        # Scrollable canvas
+        canvas = tk.Canvas(frame, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+        scroll_frame = ttk.Frame(canvas)
+        scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        form = scroll_frame
         row = 0
-        ttk.Label(frame, text="General", style="Header.TLabel").grid(
-            row=row, column=0, columnspan=2, sticky="w", pady=(0, 8))
+
+        # -- General ---------------------------------------------------------------
+        ttk.Label(form, text="General", style="Header.TLabel").grid(
+            row=row, column=0, columnspan=3, sticky="w", pady=(0, 6))
         row += 1
 
-        ttk.Label(frame, text="Tema:").grid(row=row, column=0, sticky="w", pady=3)
+        ttk.Label(form, text="Tema:").grid(row=row, column=0, sticky="w", pady=3)
         self.theme_var = tk.StringVar(value="darkly")
-        ttk.Combobox(frame, textvariable=self.theme_var, values=[
-            "darkly", "cosmo", "flatly", "journal", "litera", "lumen",
-            "minty", "pulse", "sandstone", "united", "yeti",
+        ttk.Combobox(form, textvariable=self.theme_var, values=[
+            "darkly", "superhero", "cyborg", "cosmo", "flatly", "journal",
+            "litera", "lumen", "minty", "pulse", "sandstone", "united", "yeti",
         ], width=15, state="readonly").grid(row=row, column=1, sticky="w", padx=6, pady=3)
         row += 1
 
-        ttk.Label(frame, text="Panel web puerto:").grid(row=row, column=0, sticky="w", pady=3)
+        self.min_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(form, text="Iniciar en segundo plano (solo bandeja, sin ventana)",
+                        variable=self.min_var).grid(row=row, column=0, columnspan=3, sticky="w", pady=3)
+        row += 1
+
+        self.tray_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(form, text="Cerrar ventana = minimizar a bandeja (la app sigue viva)",
+                        variable=self.tray_var).grid(row=row, column=0, columnspan=3, sticky="w", pady=3)
+        row += 1
+
+        self.stop_distros_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(form, text="Al salir: detener todas las distros WSL",
+                        variable=self.stop_distros_var).grid(row=row, column=0, columnspan=3, sticky="w", pady=3)
+        row += 1
+
+        self.keep_tunnels_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(form, text="Al salir: mantener tunnels SSH activos",
+                        variable=self.keep_tunnels_var).grid(row=row, column=0, columnspan=3, sticky="w", pady=3)
+        row += 1
+
+        self.auto_start_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(form, text="Autoarranque: iniciar con Windows en segundo plano (bandeja)",
+                        variable=self.auto_start_var).grid(row=row, column=0, columnspan=3, sticky="w", pady=3)
+        row += 1
+
+        ttk.Separator(form).grid(row=row, column=0, columnspan=3, sticky="ew", pady=8)
+        row += 1
+
+        # -- Supervisor -----------------------------------------------------------
+        ttk.Label(form, text="Supervisor", style="Header.TLabel").grid(
+            row=row, column=0, columnspan=3, sticky="w", pady=(0, 6))
+        row += 1
+
+        ttk.Label(form, text="Intervalo supervision (seg):").grid(row=row, column=0, sticky="w", pady=3)
+        self.sup_interval_var = tk.StringVar(value="10")
+        ttk.Entry(form, textvariable=self.sup_interval_var, width=8).grid(
+            row=row, column=1, sticky="w", padx=6, pady=3)
+        row += 1
+
+        ttk.Label(form, text="Retencion metricas (dias):").grid(row=row, column=0, sticky="w", pady=3)
+        self.metrics_retention_var = tk.StringVar(value="30")
+        ttk.Entry(form, textvariable=self.metrics_retention_var, width=8).grid(
+            row=row, column=1, sticky="w", padx=6, pady=3)
+        row += 1
+
+        ttk.Separator(form).grid(row=row, column=0, columnspan=3, sticky="ew", pady=8)
+        row += 1
+
+        # -- Panel web ------------------------------------------------------------
+        ttk.Label(form, text="Panel web", style="Header.TLabel").grid(
+            row=row, column=0, columnspan=3, sticky="w", pady=(0, 6))
+        row += 1
+
+        self.web_enabled_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(form, text="Panel web habilitado", variable=self.web_enabled_var).grid(
+            row=row, column=0, columnspan=2, sticky="w", pady=3)
+        row += 1
+
+        ttk.Label(form, text="Puerto:").grid(row=row, column=0, sticky="w", pady=3)
         self.web_port_var = tk.StringVar(value="8780")
-        ttk.Entry(frame, textvariable=self.web_port_var, width=8).grid(
+        ttk.Entry(form, textvariable=self.web_port_var, width=8).grid(
             row=row, column=1, sticky="w", padx=6, pady=3)
         row += 1
 
-        ttk.Label(frame, text="API puerto:").grid(row=row, column=0, sticky="w", pady=3)
+        ttk.Label(form, text="Bind:").grid(row=row, column=0, sticky="w", pady=3)
+        self.web_bind_var = tk.StringVar(value="127.0.0.1")
+        ttk.Entry(form, textvariable=self.web_bind_var, width=16).grid(
+            row=row, column=1, sticky="w", padx=6, pady=3)
+        row += 1
+
+        ttk.Label(form, text="Clave (obligatoria):").grid(row=row, column=0, sticky="w", pady=3)
+        self.web_pw_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.web_pw_var, width=24, show="*").grid(
+            row=row, column=1, sticky="w", padx=6, pady=3)
+        row += 1
+
+        ttk.Label(form, text="El panel exige esta clave; dejala vacia solo si deshabilitas el panel.",
+                  style="Muted.TLabel").grid(row=row, column=0, columnspan=3, sticky="w")
+        row += 1
+
+        ttk.Separator(form).grid(row=row, column=0, columnspan=3, sticky="ew", pady=8)
+        row += 1
+
+        # -- API REST -------------------------------------------------------------
+        ttk.Label(form, text="API REST", style="Header.TLabel").grid(
+            row=row, column=0, columnspan=3, sticky="w", pady=(0, 6))
+        row += 1
+
+        self.api_enabled_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(form, text="API REST habilitada (loopback)", variable=self.api_enabled_var).grid(
+            row=row, column=0, columnspan=2, sticky="w", pady=3)
+        row += 1
+
+        ttk.Label(form, text="Puerto API:").grid(row=row, column=0, sticky="w", pady=3)
         self.api_port_var = tk.StringVar(value="8781")
-        ttk.Entry(frame, textvariable=self.api_port_var, width=8).grid(
+        ttk.Entry(form, textvariable=self.api_port_var, width=8).grid(
             row=row, column=1, sticky="w", padx=6, pady=3)
         row += 1
 
-        ttk.Label(frame, text="MCP puerto:").grid(row=row, column=0, sticky="w", pady=3)
+        ttk.Label(form, text="Scope del token:").grid(row=row, column=0, sticky="w", pady=3)
+        self.api_scope_var = tk.StringVar(value="write")
+        ttk.Combobox(form, textvariable=self.api_scope_var, values=["read", "write", "admin"],
+                     state="readonly", width=8).grid(row=row, column=1, sticky="w", padx=6, pady=3)
+        row += 1
+
+        ttk.Button(form, text="Generar token API", bootstyle="info",
+                   command=self._gen_api_token).grid(row=row, column=1, sticky="w", padx=6, pady=3)
+        row += 1
+
+        ttk.Label(form, text="El token se genera y se guarda con hash; se muestra UNA sola vez.",
+                  style="Muted.TLabel").grid(row=row, column=0, columnspan=3, sticky="w")
+        row += 1
+
+        ttk.Separator(form).grid(row=row, column=0, columnspan=3, sticky="ew", pady=8)
+        row += 1
+
+        # -- MCP ------------------------------------------------------------------
+        ttk.Label(form, text="Servidor MCP (agentes LLM)", style="Header.TLabel").grid(
+            row=row, column=0, columnspan=3, sticky="w", pady=(0, 6))
+        row += 1
+
+        self.mcp_enabled_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(form, text="MCP habilitado", variable=self.mcp_enabled_var).grid(
+            row=row, column=0, columnspan=2, sticky="w", pady=3)
+        row += 1
+
+        ttk.Label(form, text="Transporte:").grid(row=row, column=0, sticky="w", pady=3)
+        self.mcp_transport_var = tk.StringVar(value="stdio")
+        ttk.Combobox(form, textvariable=self.mcp_transport_var, values=["stdio", "http"],
+                     state="readonly", width=8).grid(row=row, column=1, sticky="w", padx=6, pady=3)
+        row += 1
+
+        ttk.Label(form, text="Puerto (http):").grid(row=row, column=0, sticky="w", pady=3)
         self.mcp_port_var = tk.StringVar(value="8782")
-        ttk.Entry(frame, textvariable=self.mcp_port_var, width=8).grid(
+        ttk.Entry(form, textvariable=self.mcp_port_var, width=8).grid(
             row=row, column=1, sticky="w", padx=6, pady=3)
         row += 1
 
-        ttk.Button(frame, text="Guardar ajustes", bootstyle="success",
-                   command=self._save_settings).grid(row=row, column=0, columnspan=2, pady=12)
+        self.mcp_token_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(form, text="Exigir token", variable=self.mcp_token_var).grid(
+            row=row, column=0, columnspan=2, sticky="w", pady=3)
+        row += 1
 
-    def _save_settings(self) -> None:
+        ttk.Label(form, text="Token:").grid(row=row, column=0, sticky="w", pady=3)
+        self.mcp_key_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.mcp_key_var, width=24, show="*").grid(
+            row=row, column=1, sticky="w", padx=6, pady=3)
+        row += 1
+
+        ttk.Label(form, text="Si exiges token y lo dejas vacio, se genera uno aleatorio al guardar.",
+                  style="Muted.TLabel").grid(row=row, column=0, columnspan=3, sticky="w")
+        row += 1
+
+        ttk.Separator(form).grid(row=row, column=0, columnspan=3, sticky="ew", pady=8)
+        row += 1
+
+        # -- Rutas ----------------------------------------------------------------
+        ttk.Label(form, text="Rutas de binarios", style="Header.TLabel").grid(
+            row=row, column=0, columnspan=3, sticky="w", pady=(0, 6))
+        row += 1
+
+        ttk.Label(form, text="wsl.exe:").grid(row=row, column=0, sticky="w", pady=3)
+        self.wsl_exe_var = tk.StringVar(value="")
+        ttk.Entry(form, textvariable=self.wsl_exe_var, width=40).grid(
+            row=row, column=1, columnspan=2, sticky="w", padx=6, pady=3)
+        row += 1
+
+        ttk.Label(form, text="ssh.exe:").grid(row=row, column=0, sticky="w", pady=3)
+        self.ssh_exe_var = tk.StringVar(value="")
+        ttk.Entry(form, textvariable=self.ssh_exe_var, width=40).grid(
+            row=row, column=1, columnspan=2, sticky="w", padx=6, pady=3)
+        row += 1
+
+        ttk.Label(form, text="netsh.exe:").grid(row=row, column=0, sticky="w", pady=3)
+        self.netsh_exe_var = tk.StringVar(value="")
+        ttk.Entry(form, textvariable=self.netsh_exe_var, width=40).grid(
+            row=row, column=1, columnspan=2, sticky="w", padx=6, pady=3)
+        row += 1
+
+        ttk.Label(form, text="Dejar vacio para autodetectar.",
+                  style="Muted.TLabel").grid(row=row, column=0, columnspan=3, sticky="w")
+        row += 1
+
+        ttk.Separator(form).grid(row=row, column=0, columnspan=3, sticky="ew", pady=8)
+        row += 1
+
+        # -- Boton guardar -------------------------------------------------------
+        ttk.Button(form, text="Guardar ajustes", bootstyle="success",
+                   command=self._save_settings).grid(row=row, column=0, columnspan=2, pady=16)
+
+        # Load current values
+        self._load_settings_values()
+
+    def _load_settings_values(self) -> None:
+        """Cargar valores actuales de config en los widgets."""
         try:
             store = core.pf_store()
-            store.cfg.ui.web_panel_port = int(self.web_port_var.get())
-            store.cfg.api.port = int(self.api_port_var.get())
-            store.cfg.mcp.port = int(self.mcp_port_var.get())
-            store.save()
-            from tkinter import messagebox
-            messagebox.showinfo("Ajustes", "Ajustes guardados correctamente")
+            cfg = store.cfg
+            self.theme_var.set(cfg.ui.theme if cfg.ui.theme != "dark" else "darkly")
+            self.tray_var.set(cfg.ui.close_to_tray)
+            self.keep_tunnels_var.set(cfg.on_close.keep_tunnels_alive)
+            self.sup_interval_var.set(str(cfg.ui.supervisor_interval_seconds))
+            self.metrics_retention_var.set(str(cfg.ui.metrics_retention_days))
+            self.web_enabled_var.set(cfg.ui.web_panel_enabled)
+            self.web_port_var.set(str(cfg.ui.web_panel_port))
+            self.web_bind_var.set(cfg.ui.web_panel_bind)
+            self.api_enabled_var.set(cfg.api.enabled)
+            self.api_port_var.set(str(cfg.api.port))
+            self.mcp_enabled_var.set(cfg.mcp.enabled)
+            self.mcp_transport_var.set(cfg.mcp.transport)
+            self.mcp_port_var.set(str(cfg.mcp.port))
+            self.mcp_token_var.set(cfg.mcp.token_required)
+            self.wsl_exe_var.set(cfg.windows.wsl_exe)
+            self.ssh_exe_var.set(cfg.windows.ssh_exe)
+            self.netsh_exe_var.set(cfg.windows.netsh_exe)
+        except Exception:
+            pass
+
+    def _gen_api_token(self) -> None:
+        """Generar token para la API REST."""
+        import hashlib
+        import secrets as _sec
+        from tkinter import messagebox
+
+        token = _sec.token_urlsafe(32)
+        scope = self.api_scope_var.get()
+        try:
+            from wsl_port.vendor.port_forwarder.utils.secrets import SecretsStore
+            store_s = SecretsStore()
+            # Store token hash
+            import json
+            tokens = {}
+            if store_s.check("api_tokens"):
+                try:
+                    tokens = json.loads(store_s.get("api_tokens"))
+                except Exception:
+                    tokens = {}
+            token_id = f"token-{_sec.token_hex(4)}"
+            tokens[token_id] = {
+                "hash": hashlib.sha256(token.encode()).hexdigest(),
+                "scope": scope,
+            }
+            store_s.set("api_tokens", json.dumps(tokens))
         except Exception as e:
-            from tkinter import messagebox
+            messagebox.showerror("API", f"No se pudo guardar el token: {e}")
+            return
+        messagebox.showinfo(
+            "API REST",
+            f"Token API generado (scope {scope}).\n\n{token}\n\n"
+            "Guardalo: NO se volvera a mostrar.\n"
+            f"Uso: Authorization: Bearer {token}",
+        )
+
+    def _save_settings(self) -> None:
+        from tkinter import messagebox
+        try:
+            store = core.pf_store()
+            cfg = store.cfg
+
+            # General
+            cfg.ui.theme = self.theme_var.get()
+            cfg.ui.close_to_tray = self.tray_var.get()
+            cfg.on_close.keep_tunnels_alive = self.keep_tunnels_var.get()
+            cfg.on_close.stop_distros = self.stop_distros_var.get()
+
+            # Supervisor
+            cfg.ui.supervisor_interval_seconds = int(self.sup_interval_var.get() or 10)
+            cfg.ui.metrics_retention_days = int(self.metrics_retention_var.get() or 30)
+
+            # Panel web
+            web_on = self.web_enabled_var.get()
+            web_pw = self.web_pw_var.get()
+            if web_on and not web_pw:
+                messagebox.showerror("Ajustes",
+                    "El panel web debe tener una clave (es obligatoria).\n"
+                    "Escribela en 'Clave' o desactiva el panel.")
+                return
+            cfg.ui.web_panel_enabled = web_on
+            cfg.ui.web_panel_port = int(self.web_port_var.get() or 8780)
+            cfg.ui.web_panel_bind = self.web_bind_var.get().strip() or "127.0.0.1"
+            if web_pw:
+                from wsl_port.vendor.port_forwarder.utils.secrets import SecretsStore
+                SecretsStore().set("web_panel_token", web_pw)
+
+            # API REST
+            cfg.api.enabled = self.api_enabled_var.get()
+            cfg.api.port = int(self.api_port_var.get() or 8781)
+
+            # MCP
+            mcp_on = self.mcp_enabled_var.get()
+            mcp_token = self.mcp_key_var.get()
+            if mcp_on and self.mcp_token_var.get() and not mcp_token:
+                import secrets
+                mcp_token = secrets.token_urlsafe(24)
+            cfg.mcp.enabled = mcp_on
+            cfg.mcp.transport = self.mcp_transport_var.get()
+            cfg.mcp.port = int(self.mcp_port_var.get() or 8782)
+            cfg.mcp.token_required = self.mcp_token_var.get()
+            if mcp_token:
+                cfg.mcp.token = mcp_token
+
+            # Rutas de binarios
+            if self.wsl_exe_var.get().strip():
+                cfg.windows.wsl_exe = self.wsl_exe_var.get().strip()
+            if self.ssh_exe_var.get().strip():
+                cfg.windows.ssh_exe = self.ssh_exe_var.get().strip()
+            if self.netsh_exe_var.get().strip():
+                cfg.windows.netsh_exe = self.netsh_exe_var.get().strip()
+
+            # Autoarranque con Windows
+            _set_autostart(self.auto_start_var.get())
+
+            store.save()
+
+            msg = "Ajustes guardados.\nEl tema se aplica al reiniciar."
+            if mcp_on and self.mcp_token_var.get() and not self.mcp_key_var.get():
+                msg += f"\n\nToken MCP generado: {mcp_token}"
+            if self.auto_start_var.get():
+                msg += "\n\nAutoarranque con Windows: ACTIVADO."
+            messagebox.showinfo("Ajustes", msg)
+        except Exception as e:
             messagebox.showerror("Ajustes", f"Error: {e}")
 
     # -- WSL distro actions ---------------------------------------------------
