@@ -108,6 +108,8 @@ def supervisor():
             ssh=ssh_tunnel(),
             metrics=metrics_pf(),
         )
+        # Add manually stopped tracking
+        _supervisor.tunnel_manually_stopped = set()
     return _supervisor
 
 
