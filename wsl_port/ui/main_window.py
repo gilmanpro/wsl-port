@@ -218,6 +218,10 @@ class MainWindow:
                    command=self._snapshot_selected).pack(side="left", padx=2)
         ttk.Button(d_bar, text="Metricas", bootstyle="secondary",
                    command=self._show_metrics).pack(side="left", padx=2)
+        ttk.Button(d_bar, text="Crear distro...", bootstyle="success",
+                   command=self._create_distro_dialog).pack(side="left", padx=2)
+        ttk.Button(d_bar, text="Eliminar distro", bootstyle="danger",
+                   command=self._delete_selected_distro).pack(side="left", padx=2)
         self.distro_tree = _make_tree(d_tab, ["Distro", "Estado", "IP", "Version"],
                                       [200, 100, 160, 80])
 
@@ -734,6 +738,67 @@ class MainWindow:
                f"CPUs: {m.get('cpus', '?')}\n"
                f"Uptime: {m.get('uptime_s',0)}s")
         messagebox.showinfo("Metricas", msg)
+
+    def _create_distro_dialog(self) -> None:
+        """Dialogo para crear una nueva distro WSL."""
+        from tkinter import messagebox
+
+        # Get available distros
+        available = core.list_available_distros()
+        if not available:
+            available = ["Ubuntu", "Debian", "kali-linux", "openSUSE-42",
+                         "Ubuntu-20.04", "Ubuntu-22.04", "Ubuntu-24.04"]
+
+        def _validate(data):
+            if not data.get("name", "").strip():
+                raise ValueError("Selecciona una distro")
+
+        fields = [
+            ("name", "Distro a instalar", "combo"),
+        ]
+        dlg = _FormDialog(self.root, "Crear nueva distro WSL", fields,
+                          validate=_validate, size=(350, 180))
+        dlg.set_combo_values("name", available)
+
+        self.root.wait_window(dlg)
+        if not dlg.result:
+            return
+
+        distro_name = dlg.result["name"].strip()
+
+        def _work():
+            messagebox.showinfo("Crear distro",
+                                f"Instalando '{distro_name}'...\nEsto puede tardar varios minutos.")
+            r = core.create_distro(distro_name, no_launch=True)
+            if r.get("ok"):
+                messagebox.showinfo("Crear distro",
+                                    f"Distro '{distro_name}' instalada correctamente")
+            else:
+                messagebox.showerror("Crear distro", f"Error: {r.get('error')}")
+            self._q.put({"_action": "refresh"})
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _delete_selected_distro(self) -> None:
+        """Eliminar la distro WSL seleccionada."""
+        name = self._get_selected_distro()
+        if not name:
+            return
+        from tkinter import messagebox
+        if not messagebox.askyesno("Eliminar distro",
+                                   f"ATENCION: Esto eliminara la distro '{name}' y TODOS sus datos.\n\n"
+                                   "¿Continuar?"):
+            return
+
+        def _work():
+            r = core.delete_distro(name)
+            if r.get("ok"):
+                messagebox.showinfo("Eliminar distro", f"Distro '{name}' eliminada")
+            else:
+                messagebox.showerror("Eliminar distro", f"Error: {r.get('error')}")
+            self._q.put({"_action": "refresh"})
+
+        threading.Thread(target=_work, daemon=True).start()
 
     # -- Tunnel actions -------------------------------------------------------
 

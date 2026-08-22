@@ -121,6 +121,46 @@ def cmd_distro_clone(args) -> int:
     return 0 if r.get("ok") else 1
 
 
+def cmd_distro_create(args) -> int:
+    from . import core
+    print(f"Instalando distro '{args.name}'... (puede tardar varios minutos)")
+    r = core.create_distro(args.name, no_launch=not args.launch)
+    if r.get("ok"):
+        print(f"Distro '{args.name}' instalada correctamente")
+    else:
+        print(f"error: {r.get('error')}", file=sys.stderr)
+    return 0 if r.get("ok") else 1
+
+
+def cmd_distro_delete(args) -> int:
+    from . import core
+    from tkinter import messagebox
+    if not args.yes:
+        print(f"ATENCION: Esto eliminara la distro '{args.name}' y TODOS sus datos.")
+        confirm = input("Escribe 'si' para confirmar: ").strip().lower()
+        if confirm != "si":
+            print("Cancelado")
+            return 0
+    r = core.delete_distro(args.name)
+    if r.get("ok"):
+        print(f"Distro '{args.name}' eliminada")
+    else:
+        print(f"error: {r.get('error')}", file=sys.stderr)
+    return 0 if r.get("ok") else 1
+
+
+def cmd_distro_available(args) -> int:
+    from . import core
+    distros = core.list_available_distros()
+    if not distros:
+        print("(no se pudo obtener la lista)")
+        return 1
+    print("Distros disponibles para instalar:")
+    for d in distros:
+        print(f"  {d}")
+    return 0
+
+
 def cmd_distro_export(args) -> int:
     from . import core
     r = core.export_distro(args.name, args.target)
@@ -700,6 +740,16 @@ def build_parser() -> argparse.ArgumentParser:
     dm = d_sub.add_parser("metrics", help="Metricas de distro")
     dm.add_argument("name")
     dm.set_defaults(fn=cmd_distro_metrics)
+    dcr = d_sub.add_parser("create", help="Crear nueva distro (wsl --install)")
+    dcr.add_argument("name", help="Nombre de la distro (ej: Ubuntu, Debian)")
+    dcr.add_argument("--launch", action="store_true", help="Arrancar despues de instalar")
+    dcr.set_defaults(fn=cmd_distro_create)
+    ddl = d_sub.add_parser("delete", help="Eliminar distro (wsl --unregister)")
+    ddl.add_argument("name", help="Nombre de la distro a eliminar")
+    ddl.add_argument("-y", "--yes", action="store_true", help="Sin confirmacion")
+    ddl.set_defaults(fn=cmd_distro_delete)
+    dav = d_sub.add_parser("available", help="Listar distros disponibles para instalar")
+    dav.set_defaults(fn=cmd_distro_available)
 
     # limits
     lm = sub.add_parser("limits", help="Limites de recursos (.wslconfig)")

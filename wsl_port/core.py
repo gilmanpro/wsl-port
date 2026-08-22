@@ -189,6 +189,46 @@ def get_all_ips() -> dict[str, str | None]:
         return {}
 
 
+def create_distro(name: str, no_launch: bool = True) -> dict:
+    """Crear una nueva distro WSL desde el catalogo (wsl --install)."""
+    try:
+        r = wsl_provider().install_new(name, no_launch=no_launch)
+        return {"ok": r.ok, "output": r.output, "error": r.error}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def delete_distro(name: str) -> dict:
+    """Eliminar una distro WSL (wsl --unregister)."""
+    try:
+        from wsl_port.vendor.wsl_manager.utils.subprocess_async import run
+        r = run(["wsl.exe", "--unregister", name], timeout=60)
+        return {"ok": r.ok, "output": r.output, "error": r.error}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def list_available_distros() -> list[str]:
+    """Listar distros disponibles para instalar (wsl --list --online)."""
+    try:
+        from wsl_port.vendor.wsl_manager.utils.subprocess_async import run
+        r = run(["wsl.exe", "--list", "--online"], timeout=30)
+        if not r.ok:
+            return []
+        distros = []
+        for line in r.output.splitlines():
+            line = line.replace("\x00", "").strip()
+            if not line or "NAME" in line.upper() or "---" in line:
+                continue
+            # Format: "Ubuntu                  Canonical ..."
+            parts = line.split()
+            if parts:
+                distros.append(parts[0])
+        return distros
+    except Exception:
+        return []
+
+
 def distro_metrics(name: str) -> dict | None:
     try:
         m = wsl_provider().metrics(name)
