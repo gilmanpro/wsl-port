@@ -22,6 +22,9 @@ def _setup_logging(level: str = "INFO") -> None:
 def run_gui(minimized: bool = False, tray_only: bool = False) -> None:
     """Ejecutar con interfaz grafica."""
     try:
+        # Start supervisor in background before GUI
+        from wsl_port import core
+        core.supervisor_start()
         from wsl_port.ui.main_window import run
         run()
     except ImportError as e:

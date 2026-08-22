@@ -315,6 +315,7 @@ def forwards() -> list[dict]:
     """Lista forwards con estado real (drift)."""
     try:
         cfg = pf_store().cfg
+        sup = supervisor()
         result = []
         for f in cfg.forwards:
             entry = {
@@ -324,17 +325,22 @@ def forwards() -> list[dict]:
                 "protocol": f.protocol, "auto_apply": f.auto_apply,
                 "state": "unknown", "ip": None,
             }
-            # Check real state
-            try:
-                existing = netsh().list_forwards()
-                present = [x for x in existing if x.listen_port == f.listen_port]
-                if present:
-                    entry["state"] = "ok"
-                    entry["ip"] = present[0].connect_address
-                else:
-                    entry["state"] = "missing"
-            except Exception:
-                pass
+            # Use supervisor's cached state if running
+            if sup.running and f.id in sup.forward_state:
+                entry["state"] = sup.forward_state[f.id]
+                entry["ip"] = sup.known_ips.get(f.wsl_distro)
+            else:
+                # Check real state via netsh
+                try:
+                    existing = netsh().list_forwards()
+                    present = [x for x in existing if x.listen_port == f.listen_port]
+                    if present:
+                        entry["state"] = "ok"
+                        entry["ip"] = present[0].connect_address
+                    else:
+                        entry["state"] = "missing"
+                except Exception:
+                    pass
             result.append(entry)
         return result
     except Exception as e:
@@ -432,11 +438,12 @@ def tunnels() -> list[dict]:
     """Lista tunnels con estado y trafico."""
     try:
         cfg = pf_store().cfg
-        ssh = ssh_tunnel()
+        sup = supervisor()
+        ssh = sup.ssh  # Use supervisor's SSH provider (has cached process state)
         result = []
         for t in cfg.tunnels:
-            provider = _provider_for(t)
-            alive = provider.is_alive(t) if provider else False
+            # Use supervisor's SSH provider to check if alive
+            alive = ssh.is_alive(t)
             entry = {
                 "id": t.id, "type": t.type, "vps_id": t.vps_id,
                 "local": f"{t.local_bind.host}:{t.local_bind.port}",
@@ -513,7 +520,9 @@ def start_tunnel(tun_id: str) -> dict:
         tun = store.get_tunnel(tun_id)
         if not tun:
             return {"ok": False, "error": f"Tunnel '{tun_id}' no existe"}
-        provider = _provider_for(tun)
+        # Use supervisor's SSH provider to track the process
+        sup = supervisor()
+        provider = sup.ssh if tun.type == "ssh" else _provider_for(tun)
         if not provider:
             return {"ok": False, "error": f"Tipo '{tun.type}' no soportado"}
         vps = store.get_vps(tun.vps_id) if tun.type == "ssh" else None
@@ -532,7 +541,9 @@ def stop_tunnel(tun_id: str) -> dict:
         tun = store.get_tunnel(tun_id)
         if not tun:
             return {"ok": False, "error": f"Tunnel '{tun_id}' no existe"}
-        provider = _provider_for(tun)
+        # Use supervisor's SSH provider to stop the process
+        sup = supervisor()
+        provider = sup.ssh if tun.type == "ssh" else _provider_for(tun)
         if provider:
             provider.stop(tun)
         return {"ok": True, "message": f"Tunnel '{tun_id}' detenido"}
@@ -546,9 +557,12 @@ def restart_tunnel(tun_id: str) -> dict:
         tun = store.get_tunnel(tun_id)
         if not tun:
             return {"ok": False, "error": f"Tunnel '{tun_id}' no existe"}
-        provider = _provider_for(tun)
+        # Use supervisor's SSH provider to restart the process
+        sup = supervisor()
+        provider = sup.ssh if tun.type == "ssh" else _provider_for(tun)
         if provider:
             provider.stop(tun)
+            import time
             time.sleep(1)
             vps = store.get_vps(tun.vps_id) if tun.type == "ssh" else None
             if tun.type == "ssh":
@@ -582,7 +596,7 @@ def vps_list() -> list[dict]:
     try:
         cfg = pf_store().cfg
         return [{"id": v.id, "host": v.host, "user": v.user, "port": v.port,
-                 "identity_file": v.identity_file} for v in cfg.vps_list]
+                 "identity_file": v.identity_file, "password": v.password} for v in cfg.vps_list]
     except Exception:
         return []
 
