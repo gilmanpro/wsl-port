@@ -309,224 +309,169 @@ class MainWindow:
         ttk.Label(bar, textvariable=self.status_var, style="Muted.TLabel").pack(side="left")
 
     def _build_settings_tab(self, parent) -> None:
-        frame = ttk.Frame(parent, padding=12)
-        frame.pack(fill="both", expand=True)
-
-        # Scrollable canvas
-        canvas = tk.Canvas(frame, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
-        scroll_frame = ttk.Frame(canvas)
-        scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        # -- Scrollable container -----------------------------------------------
+        canvas = tk.Canvas(parent, highlightthickness=0, bg="#1a1a2e")
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        inner = ttk.Frame(canvas)
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=inner, anchor="nw", tags="inner")
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+        # Resize inner frame width with canvas
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig("inner", width=e.width - 4))
 
-        form = scroll_frame
-        row = 0
+        PAD = 12
+        COL = 2  # number of columns for compact layout
 
-        # -- General ---------------------------------------------------------------
-        ttk.Label(form, text="General", style="Header.TLabel").grid(
-            row=row, column=0, columnspan=3, sticky="w", pady=(0, 6))
-        row += 1
+        def _card(parent, title: str, row: int, col: int, colspan: int = 1) -> ttk.LabelFrame:
+            """Create a styled card (LabelFrame) in the grid."""
+            card = ttk.LabelFrame(parent, text=f"  {title}  ", padding=10)
+            card.grid(row=row, column=col, columnspan=colspan, sticky="nsew",
+                      padx=PAD // 2, pady=PAD // 2)
+            parent.columnconfigure(col, weight=1)
+            return card
 
-        ttk.Label(form, text="Tema:").grid(row=row, column=0, sticky="w", pady=3)
+        def _row(parent, r: int, label_text: str, widget_factory, hint: str = "") -> int:
+            """Add a label + widget row inside a card."""
+            ttk.Label(parent, text=label_text).grid(row=r, column=0, sticky="w", pady=2)
+            w = widget_factory(parent)
+            w.grid(row=r, column=1, sticky="ew", padx=(8, 0), pady=2)
+            parent.columnconfigure(1, weight=1)
+            if hint:
+                ttk.Label(parent, text=hint, style="Muted.TLabel", wraplength=280).grid(
+                    row=r + 1, column=0, columnspan=2, sticky="w", pady=(0, 4))
+                return r + 2
+            return r + 1
+
+        # =====================================================================
+        # ROW 0: General | Comportamiento
+        # =====================================================================
+        card_general = _card(inner, "General", row=0, col=0)
+        card_behav = _card(inner, "Comportamiento", row=0, col=1)
+
+        # -- General --
+        r = 0
         self.theme_var = tk.StringVar(value="darkly")
-        ttk.Combobox(form, textvariable=self.theme_var, values=[
-            "darkly", "superhero", "cyborg", "cosmo", "flatly", "journal",
-            "litera", "lumen", "minty", "pulse", "sandstone", "united", "yeti",
-        ], width=15, state="readonly").grid(row=row, column=1, sticky="w", padx=6, pady=3)
-        row += 1
+        r = _row(card_general, r, "Tema:", lambda p: ttk.Combobox(
+            p, textvariable=self.theme_var, values=[
+                "darkly", "superhero", "cyborg", "cosmo", "flatly", "journal",
+                "litera", "lumen", "minty", "pulse", "sandstone", "united", "yeti",
+            ], width=14, state="readonly"))
 
-        self.min_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(form, text="Iniciar en segundo plano (solo bandeja, sin ventana)",
-                        variable=self.min_var).grid(row=row, column=0, columnspan=3, sticky="w", pady=3)
-        row += 1
-
-        self.tray_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(form, text="Cerrar ventana = minimizar a bandeja (la app sigue viva)",
-                        variable=self.tray_var).grid(row=row, column=0, columnspan=3, sticky="w", pady=3)
-        row += 1
-
-        self.stop_distros_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(form, text="Al salir: detener todas las distros WSL",
-                        variable=self.stop_distros_var).grid(row=row, column=0, columnspan=3, sticky="w", pady=3)
-        row += 1
-
-        self.keep_tunnels_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(form, text="Al salir: mantener tunnels SSH activos",
-                        variable=self.keep_tunnels_var).grid(row=row, column=0, columnspan=3, sticky="w", pady=3)
-        row += 1
-
-        self.auto_start_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(form, text="Autoarranque: iniciar con Windows en segundo plano (bandeja)",
-                        variable=self.auto_start_var).grid(row=row, column=0, columnspan=3, sticky="w", pady=3)
-        row += 1
-
-        ttk.Separator(form).grid(row=row, column=0, columnspan=3, sticky="ew", pady=8)
-        row += 1
-
-        # -- Supervisor -----------------------------------------------------------
-        ttk.Label(form, text="Supervisor", style="Header.TLabel").grid(
-            row=row, column=0, columnspan=3, sticky="w", pady=(0, 6))
-        row += 1
-
-        ttk.Label(form, text="Intervalo supervision (seg):").grid(row=row, column=0, sticky="w", pady=3)
         self.sup_interval_var = tk.StringVar(value="10")
-        ttk.Entry(form, textvariable=self.sup_interval_var, width=8).grid(
-            row=row, column=1, sticky="w", padx=6, pady=3)
-        row += 1
+        r = _row(card_general, r, "Intervalo supervisor (seg):",
+                 lambda p: ttk.Entry(p, textvariable=self.sup_interval_var, width=6))
 
-        ttk.Label(form, text="Retencion metricas (dias):").grid(row=row, column=0, sticky="w", pady=3)
         self.metrics_retention_var = tk.StringVar(value="30")
-        ttk.Entry(form, textvariable=self.metrics_retention_var, width=8).grid(
-            row=row, column=1, sticky="w", padx=6, pady=3)
-        row += 1
+        r = _row(card_general, r, "Retencion metricas (dias):",
+                 lambda p: ttk.Entry(p, textvariable=self.metrics_retention_var, width=6))
 
-        ttk.Separator(form).grid(row=row, column=0, columnspan=3, sticky="ew", pady=8)
-        row += 1
+        # -- Comportamiento --
+        r = 0
+        self.min_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(card_behav, text="Iniciar en segundo plano (solo bandeja)",
+                        variable=self.min_var).grid(row=r, column=0, columnspan=2, sticky="w", pady=2)
+        r += 1
+        self.tray_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(card_behav, text="Cerrar ventana = minimizar a bandeja",
+                        variable=self.tray_var).grid(row=r, column=0, columnspan=2, sticky="w", pady=2)
+        r += 1
+        self.stop_distros_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(card_behav, text="Al salir: detener todas las distros WSL",
+                        variable=self.stop_distros_var).grid(row=r, column=0, columnspan=2, sticky="w", pady=2)
+        r += 1
+        self.keep_tunnels_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(card_behav, text="Al salir: mantener tunnels SSH activos",
+                        variable=self.keep_tunnels_var).grid(row=r, column=0, columnspan=2, sticky="w", pady=2)
+        r += 1
+        self.auto_start_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(card_behav, text="Autoarranque con Windows (bandeja)",
+                        variable=self.auto_start_var).grid(row=r, column=0, columnspan=2, sticky="w", pady=2)
 
-        # -- Panel web ------------------------------------------------------------
-        ttk.Label(form, text="Panel web", style="Header.TLabel").grid(
-            row=row, column=0, columnspan=3, sticky="w", pady=(0, 6))
-        row += 1
+        # =====================================================================
+        # ROW 1: Panel Web | API REST
+        # =====================================================================
+        card_web = _card(inner, "Panel Web", row=1, col=0)
+        card_api = _card(inner, "API REST", row=1, col=1)
 
+        # -- Panel Web --
+        r = 0
         self.web_enabled_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(form, text="Panel web habilitado", variable=self.web_enabled_var).grid(
-            row=row, column=0, columnspan=2, sticky="w", pady=3)
-        row += 1
-
-        ttk.Label(form, text="Puerto:").grid(row=row, column=0, sticky="w", pady=3)
+        ttk.Checkbutton(card_web, text="Habilitado", variable=self.web_enabled_var).grid(
+            row=r, column=0, columnspan=2, sticky="w", pady=2)
+        r += 1
         self.web_port_var = tk.StringVar(value="8780")
-        ttk.Entry(form, textvariable=self.web_port_var, width=8).grid(
-            row=row, column=1, sticky="w", padx=6, pady=3)
-        row += 1
-
-        ttk.Label(form, text="Bind:").grid(row=row, column=0, sticky="w", pady=3)
+        r = _row(card_web, r, "Puerto:", lambda p: ttk.Entry(p, textvariable=self.web_port_var, width=6))
         self.web_bind_var = tk.StringVar(value="127.0.0.1")
-        ttk.Entry(form, textvariable=self.web_bind_var, width=16).grid(
-            row=row, column=1, sticky="w", padx=6, pady=3)
-        row += 1
-
-        ttk.Label(form, text="Clave (obligatoria):").grid(row=row, column=0, sticky="w", pady=3)
+        r = _row(card_web, r, "Bind:", lambda p: ttk.Entry(p, textvariable=self.web_bind_var, width=14))
         self.web_pw_var = tk.StringVar()
-        ttk.Entry(form, textvariable=self.web_pw_var, width=24, show="*").grid(
-            row=row, column=1, sticky="w", padx=6, pady=3)
-        row += 1
+        r = _row(card_web, r, "Clave:", lambda p: ttk.Entry(p, textvariable=self.web_pw_var, width=20, show="*"),
+                 "Obligatoria. Se guarda cifrada (DPAPI).")
 
-        ttk.Label(form, text="El panel exige esta clave; dejala vacia solo si deshabilitas el panel.",
-                  style="Muted.TLabel").grid(row=row, column=0, columnspan=3, sticky="w")
-        row += 1
-
-        ttk.Separator(form).grid(row=row, column=0, columnspan=3, sticky="ew", pady=8)
-        row += 1
-
-        # -- API REST -------------------------------------------------------------
-        ttk.Label(form, text="API REST", style="Header.TLabel").grid(
-            row=row, column=0, columnspan=3, sticky="w", pady=(0, 6))
-        row += 1
-
+        # -- API REST --
+        r = 0
         self.api_enabled_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(form, text="API REST habilitada (loopback)", variable=self.api_enabled_var).grid(
-            row=row, column=0, columnspan=2, sticky="w", pady=3)
-        row += 1
-
-        ttk.Label(form, text="Puerto API:").grid(row=row, column=0, sticky="w", pady=3)
+        ttk.Checkbutton(card_api, text="Habilitada (loopback)", variable=self.api_enabled_var).grid(
+            row=r, column=0, columnspan=2, sticky="w", pady=2)
+        r += 1
         self.api_port_var = tk.StringVar(value="8781")
-        ttk.Entry(form, textvariable=self.api_port_var, width=8).grid(
-            row=row, column=1, sticky="w", padx=6, pady=3)
-        row += 1
-
-        ttk.Label(form, text="Scope del token:").grid(row=row, column=0, sticky="w", pady=3)
+        r = _row(card_api, r, "Puerto:", lambda p: ttk.Entry(p, textvariable=self.api_port_var, width=6))
         self.api_scope_var = tk.StringVar(value="write")
-        ttk.Combobox(form, textvariable=self.api_scope_var, values=["read", "write", "admin"],
-                     state="readonly", width=8).grid(row=row, column=1, sticky="w", padx=6, pady=3)
-        row += 1
+        r = _row(card_api, r, "Scope token:", lambda p: ttk.Combobox(
+            p, textvariable=self.api_scope_var, values=["read", "write", "admin"],
+            state="readonly", width=8))
+        ttk.Button(card_api, text="Generar token API", bootstyle="info",
+                   command=self._gen_api_token).grid(row=r, column=0, columnspan=2, sticky="ew", pady=(8, 2))
+        ttk.Label(card_api, text="Se muestra UNA sola vez.", style="Muted.TLabel").grid(
+            row=r + 1, column=0, columnspan=2, sticky="w")
 
-        ttk.Button(form, text="Generar token API", bootstyle="info",
-                   command=self._gen_api_token).grid(row=row, column=1, sticky="w", padx=6, pady=3)
-        row += 1
+        # =====================================================================
+        # ROW 2: MCP | Rutas de binarios
+        # =====================================================================
+        card_mcp = _card(inner, "MCP (agentes LLM)", row=2, col=0)
+        card_paths = _card(inner, "Rutas de binarios", row=2, col=1)
 
-        ttk.Label(form, text="El token se genera y se guarda con hash; se muestra UNA sola vez.",
-                  style="Muted.TLabel").grid(row=row, column=0, columnspan=3, sticky="w")
-        row += 1
-
-        ttk.Separator(form).grid(row=row, column=0, columnspan=3, sticky="ew", pady=8)
-        row += 1
-
-        # -- MCP ------------------------------------------------------------------
-        ttk.Label(form, text="Servidor MCP (agentes LLM)", style="Header.TLabel").grid(
-            row=row, column=0, columnspan=3, sticky="w", pady=(0, 6))
-        row += 1
-
+        # -- MCP --
+        r = 0
         self.mcp_enabled_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(form, text="MCP habilitado", variable=self.mcp_enabled_var).grid(
-            row=row, column=0, columnspan=2, sticky="w", pady=3)
-        row += 1
-
-        ttk.Label(form, text="Transporte:").grid(row=row, column=0, sticky="w", pady=3)
+        ttk.Checkbutton(card_mcp, text="Habilitado", variable=self.mcp_enabled_var).grid(
+            row=r, column=0, columnspan=2, sticky="w", pady=2)
+        r += 1
         self.mcp_transport_var = tk.StringVar(value="stdio")
-        ttk.Combobox(form, textvariable=self.mcp_transport_var, values=["stdio", "http"],
-                     state="readonly", width=8).grid(row=row, column=1, sticky="w", padx=6, pady=3)
-        row += 1
-
-        ttk.Label(form, text="Puerto (http):").grid(row=row, column=0, sticky="w", pady=3)
+        r = _row(card_mcp, r, "Transporte:", lambda p: ttk.Combobox(
+            p, textvariable=self.mcp_transport_var, values=["stdio", "http"],
+            state="readonly", width=8))
         self.mcp_port_var = tk.StringVar(value="8782")
-        ttk.Entry(form, textvariable=self.mcp_port_var, width=8).grid(
-            row=row, column=1, sticky="w", padx=6, pady=3)
-        row += 1
-
+        r = _row(card_mcp, r, "Puerto (http):", lambda p: ttk.Entry(p, textvariable=self.mcp_port_var, width=6))
         self.mcp_token_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(form, text="Exigir token", variable=self.mcp_token_var).grid(
-            row=row, column=0, columnspan=2, sticky="w", pady=3)
-        row += 1
-
-        ttk.Label(form, text="Token:").grid(row=row, column=0, sticky="w", pady=3)
+        ttk.Checkbutton(card_mcp, text="Exigir token", variable=self.mcp_token_var).grid(
+            row=r, column=0, columnspan=2, sticky="w", pady=2)
+        r += 1
         self.mcp_key_var = tk.StringVar()
-        ttk.Entry(form, textvariable=self.mcp_key_var, width=24, show="*").grid(
-            row=row, column=1, sticky="w", padx=6, pady=3)
-        row += 1
+        r = _row(card_mcp, r, "Token:", lambda p: ttk.Entry(p, textvariable=self.mcp_key_var, width=20, show="*"),
+                 "Si vacio, se genera uno aleatorio al guardar.")
 
-        ttk.Label(form, text="Si exiges token y lo dejas vacio, se genera uno aleatorio al guardar.",
-                  style="Muted.TLabel").grid(row=row, column=0, columnspan=3, sticky="w")
-        row += 1
-
-        ttk.Separator(form).grid(row=row, column=0, columnspan=3, sticky="ew", pady=8)
-        row += 1
-
-        # -- Rutas ----------------------------------------------------------------
-        ttk.Label(form, text="Rutas de binarios", style="Header.TLabel").grid(
-            row=row, column=0, columnspan=3, sticky="w", pady=(0, 6))
-        row += 1
-
-        ttk.Label(form, text="wsl.exe:").grid(row=row, column=0, sticky="w", pady=3)
+        # -- Rutas --
+        r = 0
         self.wsl_exe_var = tk.StringVar(value="")
-        ttk.Entry(form, textvariable=self.wsl_exe_var, width=40).grid(
-            row=row, column=1, columnspan=2, sticky="w", padx=6, pady=3)
-        row += 1
-
-        ttk.Label(form, text="ssh.exe:").grid(row=row, column=0, sticky="w", pady=3)
+        r = _row(card_paths, r, "wsl.exe:", lambda p: ttk.Entry(p, textvariable=self.wsl_exe_var, width=28))
         self.ssh_exe_var = tk.StringVar(value="")
-        ttk.Entry(form, textvariable=self.ssh_exe_var, width=40).grid(
-            row=row, column=1, columnspan=2, sticky="w", padx=6, pady=3)
-        row += 1
-
-        ttk.Label(form, text="netsh.exe:").grid(row=row, column=0, sticky="w", pady=3)
+        r = _row(card_paths, r, "ssh.exe:", lambda p: ttk.Entry(p, textvariable=self.ssh_exe_var, width=28))
         self.netsh_exe_var = tk.StringVar(value="")
-        ttk.Entry(form, textvariable=self.netsh_exe_var, width=40).grid(
-            row=row, column=1, columnspan=2, sticky="w", padx=6, pady=3)
-        row += 1
+        r = _row(card_paths, r, "netsh.exe:", lambda p: ttk.Entry(p, textvariable=self.netsh_exe_var, width=28))
+        ttk.Label(card_paths, text="Dejar vacio para autodetectar.", style="Muted.TLabel").grid(
+            row=r, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
-        ttk.Label(form, text="Dejar vacio para autodetectar.",
-                  style="Muted.TLabel").grid(row=row, column=0, columnspan=3, sticky="w")
-        row += 1
-
-        ttk.Separator(form).grid(row=row, column=0, columnspan=3, sticky="ew", pady=8)
-        row += 1
-
-        # -- Boton guardar -------------------------------------------------------
-        ttk.Button(form, text="Guardar ajustes", bootstyle="success",
-                   command=self._save_settings).grid(row=row, column=0, columnspan=2, pady=16)
+        # =====================================================================
+        # ROW 3: Guardar
+        # =====================================================================
+        btn_frame = ttk.Frame(inner)
+        btn_frame.grid(row=3, column=0, columnspan=2, pady=(8, 16))
+        ttk.Button(btn_frame, text="  Guardar ajustes  ", bootstyle="success",
+                   command=self._save_settings).pack(side="left", padx=6)
+        ttk.Button(btn_frame, text="  Restaurar valores  ", bootstyle="secondary",
+                   command=self._load_settings_values).pack(side="left", padx=6)
 
         # Load current values
         self._load_settings_values()
