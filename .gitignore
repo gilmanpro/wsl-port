@@ -11,3 +11,39 @@ build/
 tmp/
 temp_vars.txt
 wsl_port/vendor/
+
+# Security: sensitive files
+secrets.json
+config.json
+*.key
+*.pem
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+id_ecdsa
+id_ecdsa.*
+id_dsa
+id_dsa.*
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Logs and data
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
