@@ -1,9 +1,9 @@
-# Reporte de Pruebas: Panel Web wsl-port
+﻿# Reporte de Pruebas: Panel Web wsl-port
 
 **Fecha:** 2026-08-22  
 **App:** wsl-port v1.0  
 **Panel Web:** http://127.0.0.1:8780  
-**Token:** REDACTED (DPAPI cifrado)
+**Token:** ***TOKEN-REDACTED*** (DPAPI cifrado)
 
 ---
 
@@ -11,11 +11,11 @@
 
 | Categoria | Tests | Pasaron | Fallaron | Estado |
 |---|---|---|---|---|
-| Dashboard HTML | 1 | 1 | 0 | ✅ |
-| API GET endpoints | 5 | 5 | 0 | ✅ |
-| API POST endpoints | 6 | 6 | 0 | ✅ |
-| Auth validation | 1 | 1 | 0 | ✅ |
-| **TOTAL** | **13** | **13** | **0** | **✅** |
+| Dashboard HTML | 1 | 1 | 0 | âœ… |
+| API GET endpoints | 5 | 5 | 0 | âœ… |
+| API POST endpoints | 6 | 6 | 0 | âœ… |
+| Auth validation | 1 | 1 | 0 | âœ… |
+| **TOTAL** | **13** | **13** | **0** | **âœ…** |
 
 ---
 
@@ -25,7 +25,7 @@
 
 ```bash
 # Configurar token
-echo "REDACTED" | wsl-port secrets set web_panel_token
+echo "***TOKEN-REDACTED***" | wsl-port secrets set web_panel_token
 
 # Verificar token
 wsl-port secrets check web_panel_token
@@ -61,7 +61,7 @@ panel = start_panel(sup, port=8780, bind='127.0.0.1', token=token)
 
 | Test | Endpoint | Resultado | Estado |
 |---|---|---|---|
-| GET / | `http://127.0.0.1:8780/` | 200 OK, 11575 chars | ✅ |
+| GET / | `http://127.0.0.1:8780/` | 200 OK, 11575 chars | âœ… |
 
 **Verificaciones:**
 - Content-Type: `text/html; charset=utf-8`
@@ -77,7 +77,7 @@ panel = start_panel(sup, port=8780, bind='127.0.0.1', token=token)
 
 | Test | Endpoint | Resultado | Estado |
 |---|---|---|---|
-| GET /api/v1/state | Estado completo | 200 OK | ✅ |
+| GET /api/v1/state | Estado completo | 200 OK | âœ… |
 
 **Respuesta:**
 ```json
@@ -104,25 +104,25 @@ panel = start_panel(sup, port=8780, bind='127.0.0.1', token=token)
 
 | Test | Endpoint | Resultado | Estado |
 |---|---|---|---|
-| GET /api/v1/events | Eventos recientes | 200 OK | ✅ |
+| GET /api/v1/events | Eventos recientes | 200 OK | âœ… |
 
 ### 3.3 Alertas
 
 | Test | Endpoint | Resultado | Estado |
 |---|---|---|---|
-| GET /api/v1/alerts | Lista de alertas | 200 OK | ✅ |
+| GET /api/v1/alerts | Lista de alertas | 200 OK | âœ… |
 
 ### 3.4 Health
 
 | Test | Endpoint | Resultado | Estado |
 |---|---|---|---|
-| GET /api/v1/health | Health checks | 200 OK | ✅ |
+| GET /api/v1/health | Health checks | 200 OK | âœ… |
 
 ### 3.5 VPS
 
 | Test | Endpoint | Resultado | Estado |
 |---|---|---|---|
-| GET /api/v1/vps | Lista de VPS | 200 OK | ✅ |
+| GET /api/v1/vps | Lista de VPS | 200 OK | âœ… |
 
 ---
 
@@ -132,9 +132,9 @@ panel = start_panel(sup, port=8780, bind='127.0.0.1', token=token)
 
 | Test | Endpoint | Body | Resultado | Estado |
 |---|---|---|---|---|
-| Add forward | POST /api/v1/forwards/add | `{id, listen_port, wsl_port, distro}` | 200 OK | ✅ |
-| Verify added | GET /api/v1/state | - | Forward visible | ✅ |
-| Remove forward | POST /api/v1/forwards/remove/{id} | `{id}` | 200 OK | ✅ |
+| Add forward | POST /api/v1/forwards/add | `{id, listen_port, wsl_port, distro}` | 200 OK | âœ… |
+| Verify added | GET /api/v1/state | - | Forward visible | âœ… |
+| Remove forward | POST /api/v1/forwards/remove/{id} | `{id}` | 200 OK | âœ… |
 
 **Prueba add forward:**
 ```json
@@ -158,8 +158,8 @@ panel = start_panel(sup, port=8780, bind='127.0.0.1', token=token)
 
 | Test | Endpoint | Body | Resultado | Estado |
 |---|---|---|---|---|
-| Add tunnel | POST /api/v1/tunnels/add | `{id, vps_id, local, remotes}` | 200 OK | ✅ |
-| Remove tunnel | POST /api/v1/tunnels/remove/{id} | `{id}` | 200 OK | ✅ |
+| Add tunnel | POST /api/v1/tunnels/add | `{id, vps_id, local, remotes}` | 200 OK | âœ… |
+| Remove tunnel | POST /api/v1/tunnels/remove/{id} | `{id}` | 200 OK | âœ… |
 
 **Prueba add tunnel:**
 ```json
@@ -182,8 +182,8 @@ panel = start_panel(sup, port=8780, bind='127.0.0.1', token=token)
 
 | Test | Endpoint | Body | Resultado | Estado |
 |---|---|---|---|---|
-| Add VPS | POST /api/v1/vps/add | `{id, host, user, port}` | 200 OK | ✅ |
-| Remove VPS | POST /api/v1/vps/remove/{id} | `{id}` | 200 OK | ✅ |
+| Add VPS | POST /api/v1/vps/add | `{id, host, user, port}` | 200 OK | âœ… |
+| Remove VPS | POST /api/v1/vps/remove/{id} | `{id}` | 200 OK | âœ… |
 
 **Prueba add VPS:**
 ```json
@@ -206,8 +206,8 @@ panel = start_panel(sup, port=8780, bind='127.0.0.1', token=token)
 
 | Test | Endpoint | Body | Resultado | Estado |
 |---|---|---|---|---|
-| Activar | POST /api/v1/maintenance/on | `{}` | 200 OK | ✅ |
-| Desactivar | POST /api/v1/maintenance/off | `{}` | 200 OK | ✅ |
+| Activar | POST /api/v1/maintenance/on | `{}` | 200 OK | âœ… |
+| Desactivar | POST /api/v1/maintenance/off | `{}` | 200 OK | âœ… |
 
 ---
 
@@ -215,13 +215,13 @@ panel = start_panel(sup, port=8780, bind='127.0.0.1', token=token)
 
 | Test | Endpoint | Resultado | Estado |
 |---|---|---|---|
-| Sin token | GET /api/v1/state | 401 Unauthorized | ✅ |
-| Token correcto | GET /api/v1/state | 200 OK | ✅ |
+| Sin token | GET /api/v1/state | 401 Unauthorized | âœ… |
+| Token correcto | GET /api/v1/state | 200 OK | âœ… |
 
 **Verificacion de seguridad:**
-- Sin token → 401 (esperado)
-- Token incorrecto → 401 (esperado)
-- Token correcto → 200 (esperado)
+- Sin token â†’ 401 (esperado)
+- Token incorrecto â†’ 401 (esperado)
+- Token correcto â†’ 200 (esperado)
 
 ---
 
@@ -316,7 +316,7 @@ panel = start_panel(sup, port=8780, bind='127.0.0.1', token=token)
 2. GET `/api/v1/state` para verificar que aparece
 3. POST `/api/v1/forwards/remove/{id}` para limpiar
 
-**Resultado:** ✅ Flujo completo funciona
+**Resultado:** âœ… Flujo completo funciona
 
 ### 9.2 Flujo completo: Crear tunnel via web
 
@@ -324,7 +324,7 @@ panel = start_panel(sup, port=8780, bind='127.0.0.1', token=token)
 2. GET `/api/v1/state` para verificar que aparece
 3. POST `/api/v1/tunnels/remove/{id}` para limpiar
 
-**Resultado:** ✅ Flujo completo funciona
+**Resultado:** âœ… Flujo completo funciona
 
 ### 9.3 Flujo completo: Crear VPS via web
 
@@ -332,7 +332,7 @@ panel = start_panel(sup, port=8780, bind='127.0.0.1', token=token)
 2. GET `/api/v1/vps` para verificar que aparece
 3. POST `/api/v1/vps/remove/{id}` para limpiar
 
-**Resultado:** ✅ Flujo completo funciona
+**Resultado:** âœ… Flujo completo funciona
 
 ---
 
@@ -340,7 +340,7 @@ panel = start_panel(sup, port=8780, bind='127.0.0.1', token=token)
 
 | Servicio | Puerto | Bind | Token |
 |---|---|---|---|
-| Web Panel | 8780 | 127.0.0.1 | REDACTED |
+| Web Panel | 8780 | 127.0.0.1 | ***TOKEN-REDACTED*** |
 | API REST | 8781 | 127.0.0.1 | - |
 | MCP | 8782 | stdio | - |
 
@@ -352,25 +352,26 @@ panel = start_panel(sup, port=8780, bind='127.0.0.1', token=token)
 
 ### Capacidades verificadas:
 
-- ✅ Dashboard HTML con estado en vivo
-- ✅ API REST completa (GET y POST)
-- ✅ CRUD de forwards via web
-- ✅ CRUD de tunnels via web
-- ✅ CRUD de VPS via web
-- ✅ Maintenance mode via web
-- ✅ Autenticacion con token DPAPI
-- ✅ Proteccion CSRF
-- ✅ Headers de seguridad
-- ✅ Rate limiting
+- âœ… Dashboard HTML con estado en vivo
+- âœ… API REST completa (GET y POST)
+- âœ… CRUD de forwards via web
+- âœ… CRUD de tunnels via web
+- âœ… CRUD de VPS via web
+- âœ… Maintenance mode via web
+- âœ… Autenticacion con token DPAPI
+- âœ… Proteccion CSRF
+- âœ… Headers de seguridad
+- âœ… Rate limiting
 
 ### Acceso al panel:
 
 ```
 URL: http://127.0.0.1:8780
-Token: REDACTED (configurar con: wsl-port secrets set web_panel_token)
+Token: ***TOKEN-REDACTED*** (configurar con: wsl-port secrets set web_panel_token)
 ```
 
 ---
 
 **Reporte generado por wsl-port v1.0**  
 **Fecha:** 2026-08-22 21:05
+

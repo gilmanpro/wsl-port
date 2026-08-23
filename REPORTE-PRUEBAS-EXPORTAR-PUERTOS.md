@@ -1,4 +1,4 @@
-# Reporte de Pruebas: Exportar Mismo Puerto desde Multiples WSL
+﻿# Reporte de Pruebas: Exportar Mismo Puerto desde Multiples WSL
 
 **Fecha:** 2026-08-22  
 **App:** wsl-port v1.0  
@@ -8,16 +8,16 @@
 
 ## Resumen
 
-Se probó la funcionalidad de exportar el **mismo puerto (8080)** desde dos distros WSL diferentes hacia un VPS, usando **diferentes puertos públicos** en el VPS.
+Se probÃ³ la funcionalidad de exportar el **mismo puerto (8080)** desde dos distros WSL diferentes hacia un VPS, usando **diferentes puertos pÃºblicos** en el VPS.
 
-| Distro | Puerto WSL | Puerto VPS | URL Pública | Estado |
+| Distro | Puerto WSL | Puerto VPS | URL PÃºblica | Estado |
 |---|---|---|---|---|
-| Debian | 8080 | 18080 | http://VPS_IP_REDACTED:18080 | ✅ OK |
-| debian-openclaw1 | 8080 | 28080 | http://VPS_IP_REDACTED:28080 | ✅ OK |
+| Debian | 8080 | 18080 | http://VPS_IP_REDACTED:18080 | âœ… OK |
+| debian-openclaw1 | 8080 | 28080 | http://VPS_IP_REDACTED:28080 | âœ… OK |
 
 ---
 
-## Configuración del Entorno
+## ConfiguraciÃ³n del Entorno
 
 ### Distro WSL
 
@@ -44,7 +44,7 @@ Usuario: debian
 
 ### 1. Crear Servidores de Prueba
 
-Se creó un script Python simple en cada distro:
+Se creÃ³ un script Python simple en cada distro:
 
 ```python
 # /tmp/test_server.py
@@ -76,8 +76,8 @@ wsl -d Debian -- python3 /tmp/test_server.py &
 wsl -d debian-openclaw1 -- python3 /tmp/test_server.py &
 ```
 
-**Verificación local:**
-- Debian: `curl http://localhost:8080` → OK
+**VerificaciÃ³n local:**
+- Debian: `curl http://localhost:8080` â†’ OK
 - debian-openclaw1: Puerto 8080 escuchando (verificado con `ss -tlnp`)
 
 ### 3. Crear Tunnels SSH
@@ -117,15 +117,15 @@ tun-openclaw-web   ssh  vps=vps1 de canada  local=127.0.0.1:8080  remote=0.0.0.0
 
 | Puerto VPS | Estado | Servicio |
 |---|---|---|
-| VPS_IP_REDACTED:18080 | ✅ Abierto | Debian web server |
-| VPS_IP_REDACTED:28080 | ✅ Abierto | debian-openclaw1 web server |
+| VPS_IP_REDACTED:18080 | âœ… Abierto | Debian web server |
+| VPS_IP_REDACTED:28080 | âœ… Abierto | debian-openclaw1 web server |
 
 ### Prueba de Acceso HTTP
 
 | URL | Estado | Respuesta |
 |---|---|---|
-| http://VPS_IP_REDACTED:18080 | ✅ OK | HTML con "Servidor de Prueba" |
-| http://VPS_IP_REDACTED:28080 | ✅ OK | HTML con "Servidor de Prueba" |
+| http://VPS_IP_REDACTED:18080 | âœ… OK | HTML con "Servidor de Prueba" |
+| http://VPS_IP_REDACTED:28080 | âœ… OK | HTML con "Servidor de Prueba" |
 
 ### Respuestas HTTP Reales
 
@@ -161,7 +161,7 @@ tun-openclaw-web   ssh  vps=vps1 de canada  local=127.0.0.1:8080  remote=0.0.0.0
 
 ---
 
-## Tráfico de los Tunnels
+## TrÃ¡fico de los Tunnels
 
 ```
 tun-debian-web:    rx 346.8 KB  tx 456.9 KB
@@ -174,9 +174,9 @@ tun-openclaw-web:  rx 346.8 KB  tx 456.9 KB
 
 ### Servidores deben estar corriendo
 
-Los servidores de prueba en las distros WSL deben estar ejecutándose para que los tunnels funcionen. Si los servidores se detienen, los tunnels seguirán activos pero no habrá servicio disponible.
+Los servidores de prueba en las distros WSL deben estar ejecutÃ¡ndose para que los tunnels funcionen. Si los servidores se detienen, los tunnels seguirÃ¡n activos pero no habrÃ¡ servicio disponible.
 
-**Para verificar que los servidores están corriendo:**
+**Para verificar que los servidores estÃ¡n corriendo:**
 ```bash
 # En Debian
 wsl -d Debian -- bash -c "ss -tlnp | grep 8080"
@@ -187,7 +187,7 @@ wsl -d debian-openclaw1 -- bash -c "ss -tlnp | grep 8080"
 
 ### Tunnels deben estar activos
 
-Los tunnels SSH deben estar en estado "running" para que el tráfico fluya correctamente.
+Los tunnels SSH deben estar en estado "running" para que el trÃ¡fico fluya correctamente.
 
 **Para verificar el estado de los tunnels:**
 ```bash
@@ -214,15 +214,15 @@ wsl-port health check
 
 ---
 
-## Conclusión
+## ConclusiÃ³n
 
-✅ **Prueba exitosa:** Se puede exportar el mismo puerto (8080) desde multiples distros WSL hacia un VPS, usando diferentes puertos públicos.
+âœ… **Prueba exitosa:** Se puede exportar el mismo puerto (8080) desde multiples distros WSL hacia un VPS, usando diferentes puertos pÃºblicos.
 
-### Flujo de Tráfico
+### Flujo de TrÃ¡fico
 
 ```
-Internet → VPS:18080 → SSH Tunnel → Windows:8080 → WSL Debian:8080
-Internet → VPS:28080 → SSH Tunnel → Windows:8080 → WSL debian-openclaw1:8080
+Internet â†’ VPS:18080 â†’ SSH Tunnel â†’ Windows:8080 â†’ WSL Debian:8080
+Internet â†’ VPS:28080 â†’ SSH Tunnel â†’ Windows:8080 â†’ WSL debian-openclaw1:8080
 ```
 
 ### Limitaciones
@@ -260,4 +260,5 @@ wsl-port health check
 
 **Reporte generado por wsl-port v1.0**  
 **Fecha:** 2026-08-22 18:11  
-**Última actualización:** 2026-08-22 18:11
+**Ãšltima actualizaciÃ³n:** 2026-08-22 18:11
+

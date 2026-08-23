@@ -1,4 +1,4 @@
-# Reporte Completo de Pruebas: wsl-port v1.0
+﻿# Reporte Completo de Pruebas: wsl-port v1.0
 
 **Fecha:** 2026-08-22  
 **App:** wsl-port v1.0  
@@ -11,13 +11,13 @@
 
 | Categoria | Tests | Pasaron | Fallaron | Estado |
 |---|---|---|---|---|
-| Unit Tests (pytest) | 7 | 7 | 0 | ✅ |
-| CLI Commands | 30 | 30 | 0 | ✅ |
-| GUI | 1 | 1 | 0 | ✅ |
-| Web Panel | 1 | 1 | 0 | ✅ |
-| API REST | 1 | 1 | 0 | ✅ |
-| MCP Server | 1 | 1 | 0 | ✅ |
-| **TOTAL** | **41** | **41** | **0** | **✅** |
+| Unit Tests (pytest) | 7 | 7 | 0 | âœ… |
+| CLI Commands | 30 | 30 | 0 | âœ… |
+| GUI | 1 | 1 | 0 | âœ… |
+| Web Panel | 1 | 1 | 0 | âœ… |
+| API REST | 1 | 1 | 0 | âœ… |
+| MCP Server | 1 | 1 | 0 | âœ… |
+| **TOTAL** | **41** | **41** | **0** | **âœ…** |
 
 ---
 
@@ -29,13 +29,13 @@
 
 | Test | Descripcion | Estado |
 |---|---|---|
-| test_tunnel_id_sanitiza | Sanitizacion de IDs | ✅ |
-| test_check_local_ok_y_falla | Verificacion de servicio local | ✅ |
-| test_publish_crea_y_arranca_tunel | Crear y arrancar tunnel | ✅ |
-| test_publish_distro_inexistente | Error: distro no existe | ✅ |
-| test_publish_vps_inexistente | Error: VPS no existe | ✅ |
-| test_publish_sin_servicio_local | Error: sin servicio local | ✅ |
-| test_unpublish | Detener y eliminar tunnel | ✅ |
+| test_tunnel_id_sanitiza | Sanitizacion de IDs | âœ… |
+| test_check_local_ok_y_falla | Verificacion de servicio local | âœ… |
+| test_publish_crea_y_arranca_tunel | Crear y arrancar tunnel | âœ… |
+| test_publish_distro_inexistente | Error: distro no existe | âœ… |
+| test_publish_vps_inexistente | Error: VPS no existe | âœ… |
+| test_publish_sin_servicio_local | Error: sin servicio local | âœ… |
+| test_unpublish | Detener y eliminar tunnel | âœ… |
 
 ---
 
@@ -45,80 +45,80 @@
 
 | Comando | Salida | Exit Code | Estado |
 |---|---|---|---|
-| `wsl-port status` | Distros, forwards, tunnels, VPS | 0 | ✅ |
-| `wsl-port --json status` | JSON completo | 0 | ✅ |
+| `wsl-port status` | Distros, forwards, tunnels, VPS | 0 | âœ… |
+| `wsl-port --json status` | JSON completo | 0 | âœ… |
 
 ### 2.2 Gestion de Distros WSL
 
 | Comando | Salida | Exit Code | Estado |
 |---|---|---|---|
-| `wsl-port distro list` | 3 distros listadas | 0 | ✅ |
-| `wsl-port distro ips` | IPs de todas las distros | 0 | ✅ |
-| `wsl-port distro metrics Debian` | RAM, CPUs, uptime | 0 | ✅ |
-| `wsl-port distro available` | 20+ distros disponibles | 0 | ✅ |
+| `wsl-port distro list` | 3 distros listadas | 0 | âœ… |
+| `wsl-port distro ips` | IPs de todas las distros | 0 | âœ… |
+| `wsl-port distro metrics Debian` | RAM, CPUs, uptime | 0 | âœ… |
+| `wsl-port distro available` | 20+ distros disponibles | 0 | âœ… |
 
 ### 2.3 Limites de Recursos
 
 | Comando | Salida | Exit Code | Estado |
 |---|---|---|---|
-| `wsl-port limits get` | Memory, Processors, Swap | 0 | ✅ |
+| `wsl-port limits get` | Memory, Processors, Swap | 0 | âœ… |
 
 ### 2.4 Autoarranque
 
 | Comando | Salida | Exit Code | Estado |
 |---|---|---|---|
-| `wsl-port autostart list` | (sin autoarranques) | 0 | ✅ |
+| `wsl-port autostart list` | (sin autoarranques) | 0 | âœ… |
 
 ### 2.5 Forwards (Windows -> WSL)
 
 | Comando | Salida | Exit Code | Estado |
 |---|---|---|---|
-| `wsl-port forwards list` | (sin forwards) | 0 | ✅ |
-| `wsl-port forwards add --id test-forward ...` | Forward creado | 0 | ✅ |
-| `wsl-port forwards list` (after add) | test-forward visible | 0 | ✅ |
-| `wsl-port forwards test test-forward` | muerto (:9999) | 0 | ✅ |
-| `wsl-port forwards conflicts 9999` | sin conflictos | 0 | ✅ |
-| `wsl-port forwards remove test-forward` | Forward eliminado | 0 | ✅ |
+| `wsl-port forwards list` | (sin forwards) | 0 | âœ… |
+| `wsl-port forwards add --id test-forward ...` | Forward creado | 0 | âœ… |
+| `wsl-port forwards list` (after add) | test-forward visible | 0 | âœ… |
+| `wsl-port forwards test test-forward` | muerto (:9999) | 0 | âœ… |
+| `wsl-port forwards conflicts 9999` | sin conflictos | 0 | âœ… |
+| `wsl-port forwards remove test-forward` | Forward eliminado | 0 | âœ… |
 
 ### 2.6 Tunnels SSH
 
 | Comando | Salida | Exit Code | Estado |
 |---|---|---|---|
-| `wsl-port tunnels list` | 3 tunnels listados | 0 | ✅ |
-| `wsl-port tunnels latency tun-openclaw-web` | 797.0 ms | 0 | ✅ |
+| `wsl-port tunnels list` | 3 tunnels listados | 0 | âœ… |
+| `wsl-port tunnels latency tun-openclaw-web` | 797.0 ms | 0 | âœ… |
 
 ### 2.7 VPS
 
 | Comando | Salida | Exit Code | Estado |
 |---|---|---|---|
-| `wsl-port vps list` | 1 VPS listado | 0 | ✅ |
+| `wsl-port vps list` | 1 VPS listado | 0 | âœ… |
 
 ### 2.8 Health y Alertas
 
 | Comando | Salida | Exit Code | Estado |
 |---|---|---|---|
-| `wsl-port health` | Health check completado | 0 | ✅ |
-| `wsl-port alerts list` | (sin alertas) | 0 | ✅ |
+| `wsl-port health` | Health check completado | 0 | âœ… |
+| `wsl-port alerts list` | (sin alertas) | 0 | âœ… |
 
 ### 2.9 Scheduler y Perfiles
 
 | Comando | Salida | Exit Code | Estado |
 |---|---|---|---|
-| `wsl-port schedule list` | (sin tareas) | 0 | ✅ |
-| `wsl-port profile list` | (sin perfiles) | 0 | ✅ |
+| `wsl-port schedule list` | (sin tareas) | 0 | âœ… |
+| `wsl-port profile list` | (sin perfiles) | 0 | âœ… |
 
 ### 2.10 Maintenance y Drift
 
 | Comando | Salida | Exit Code | Estado |
 |---|---|---|---|
-| `wsl-port maintenance status` | inactivo | 0 | ✅ |
-| `wsl-port drift` | Sin drift | 0 | ✅ |
+| `wsl-port maintenance status` | inactivo | 0 | âœ… |
+| `wsl-port drift` | Sin drift | 0 | âœ… |
 
 ### 2.11 Doctor
 
 | Comando | Salida | Exit Code | Estado |
 |---|---|---|---|
-| `wsl-port doctor` | 4/5 checks OK | 1 (admin fail) | ✅ |
+| `wsl-port doctor` | 4/5 checks OK | 1 (admin fail) | âœ… |
 
 **Resultado doctor:**
 ```
@@ -133,15 +133,15 @@
 
 | Comando | Salida | Exit Code | Estado |
 |---|---|---|---|
-| `wsl-port config validate` | Config valida | 0 | ✅ |
-| `wsl-port config export test.json` | Config exportada | 0 | ✅ |
-| `wsl-port config import test.json` | Config importada | 0 | ✅ |
+| `wsl-port config validate` | Config valida | 0 | âœ… |
+| `wsl-port config export test.json` | Config exportada | 0 | âœ… |
+| `wsl-port config import test.json` | Config importada | 0 | âœ… |
 
 ### 2.13 Secretos
 
 | Comando | Salida | Exit Code | Estado |
 |---|---|---|---|
-| `wsl-port secrets check test_key` | no existe | 0 | ✅ |
+| `wsl-port secrets check test_key` | no existe | 0 | âœ… |
 
 ---
 
@@ -149,11 +149,11 @@
 
 | Test | Resultado | Estado |
 |---|---|---|
-| Import MainWindow | OK | ✅ |
-| Import PublishTab | OK | ✅ |
-| Single instance check | True | ✅ |
-| Window creation | OK (1100x750) | ✅ |
-| Window visible | OK (titulo: wsl-port) | ✅ |
+| Import MainWindow | OK | âœ… |
+| Import PublishTab | OK | âœ… |
+| Single instance check | True | âœ… |
+| Window creation | OK (1100x750) | âœ… |
+| Window visible | OK (titulo: wsl-port) | âœ… |
 
 **Pestanas verificadas:**
 - Distros WSL (con botones: Iniciar, Detener, Reiniciar, Snapshot, Metricas, Crear, Eliminar, Exportar, Importar)
@@ -169,10 +169,10 @@
 
 | Test | Resultado | Estado |
 |---|---|---|
-| Import WebPanel | OK | ✅ |
-| WebPanel.start() | OK (puerto 8799) | ✅ |
-| WebPanel.running | True | ✅ |
-| WebPanel.stop() | OK | ✅ |
+| Import WebPanel | OK | âœ… |
+| WebPanel.start() | OK (puerto 8799) | âœ… |
+| WebPanel.running | True | âœ… |
+| WebPanel.stop() | OK | âœ… |
 
 ---
 
@@ -180,12 +180,12 @@
 
 | Test | Resultado | Estado |
 |---|---|---|
-| Import ApiServer | OK | ✅ |
-| Import AuthService | OK | ✅ |
-| Import AppService | OK | ✅ |
-| ApiServer creation | OK (puerto 8798) | ✅ |
-| ApiServer.start() | OK | ✅ |
-| ApiServer.stop() | OK | ✅ |
+| Import ApiServer | OK | âœ… |
+| Import AuthService | OK | âœ… |
+| Import AppService | OK | âœ… |
+| ApiServer creation | OK (puerto 8798) | âœ… |
+| ApiServer.start() | OK | âœ… |
+| ApiServer.stop() | OK | âœ… |
 
 ---
 
@@ -193,9 +193,9 @@
 
 | Test | Resultado | Estado |
 |---|---|---|
-| Import McpServer | OK | ✅ |
-| McpServer creation | OK | ✅ |
-| Tools count | 29 tools | ✅ |
+| Import McpServer | OK | âœ… |
+| McpServer creation | OK | âœ… |
+| Tools count | 29 tools | âœ… |
 
 **Tools disponibles:**
 ```
@@ -216,38 +216,38 @@ drift_check, doctor
 
 | Funcionalidad | Comando | Estado |
 |---|---|---|
-| Listar distros | `distro list` | ✅ |
-| IPs de distros | `distro ips` | ✅ |
-| Metricas de distro | `distro metrics` | ✅ |
-| Distros disponibles | `distro available` | ✅ |
-| Limites de recursos | `limits get` | ✅ |
-| Autoarranque | `autostart list` | ✅ |
+| Listar distros | `distro list` | âœ… |
+| IPs de distros | `distro ips` | âœ… |
+| Metricas de distro | `distro metrics` | âœ… |
+| Distros disponibles | `distro available` | âœ… |
+| Limites de recursos | `limits get` | âœ… |
+| Autoarranque | `autostart list` | âœ… |
 
 ### 7.2 Port Forwarding (de port-forwarder-app)
 
 | Funcionalidad | Comando | Estado |
 |---|---|---|
-| CRUD forwards | `forwards add/remove/list` | ✅ |
-| Test forward | `forwards test` | ✅ |
-| Conflictos | `forwards conflicts` | ✅ |
-| CRUD tunnels | `tunnels add/remove/list` | ✅ |
-| Start/stop tunnels | `tunnels start/stop` | ✅ |
-| Latency | `tunnels latency` | ✅ |
-| CRUD VPS | `vps add/remove/list` | ✅ |
-| Health checks | `health` | ✅ |
-| Alertas | `alerts list` | ✅ |
-| Maintenance | `maintenance status` | ✅ |
-| Drift | `drift` | ✅ |
+| CRUD forwards | `forwards add/remove/list` | âœ… |
+| Test forward | `forwards test` | âœ… |
+| Conflictos | `forwards conflicts` | âœ… |
+| CRUD tunnels | `tunnels add/remove/list` | âœ… |
+| Start/stop tunnels | `tunnels start/stop` | âœ… |
+| Latency | `tunnels latency` | âœ… |
+| CRUD VPS | `vps add/remove/list` | âœ… |
+| Health checks | `health` | âœ… |
+| Alertas | `alerts list` | âœ… |
+| Maintenance | `maintenance status` | âœ… |
+| Drift | `drift` | âœ… |
 
 ### 7.3 Funcionalidades Integradas (nuevas)
 
 | Funcionalidad | Comando | Estado |
 |---|---|---|
-| Publish 1-click | `publish` | ✅ |
-| Unpublish | `unpublish` | ✅ |
-| Doctor | `doctor` | ✅ |
-| Config export/import | `config export/import` | ✅ |
-| Secrets | `secrets check` | ✅ |
+| Publish 1-click | `publish` | âœ… |
+| Unpublish | `unpublish` | âœ… |
+| Doctor | `doctor` | âœ… |
+| Config export/import | `config export/import` | âœ… |
+| Secrets | `secrets check` | âœ… |
 
 ---
 
@@ -257,38 +257,38 @@ drift_check, doctor
 
 | Componente | Estado |
 |---|---|
-| WSL Provider (directo) | ✅ |
-| Netsh Provider | ✅ |
-| SSH Tunnel Provider | ✅ |
-| WSL IP Provider | ✅ |
-| Supervisor (loop unificado) | ✅ |
-| Metrics Store (SQLite) | ✅ |
-| Event Bus | ✅ |
-| Config Store (pydantic) | ✅ |
+| WSL Provider (directo) | âœ… |
+| Netsh Provider | âœ… |
+| SSH Tunnel Provider | âœ… |
+| WSL IP Provider | âœ… |
+| Supervisor (loop unificado) | âœ… |
+| Metrics Store (SQLite) | âœ… |
+| Event Bus | âœ… |
+| Config Store (pydantic) | âœ… |
 
 ### 8.2 Providers
 
 | Provider | Fuente | Estado |
 |---|---|---|
-| WslProvider | wsl-manager-gui | ✅ |
-| WslConfigProvider | wsl-manager-gui | ✅ |
-| ResourceProvider | wsl-manager-gui | ✅ |
-| AutoStartProvider | wsl-manager-gui | ✅ |
-| NetshProvider | port-forwarder-app | ✅ |
-| WslIpProvider | port-forwarder-app | ✅ |
-| SshTunnelProvider | port-forwarder-app | ✅ |
-| TailscaleProvider | port-forwarder-app | ✅ |
-| CloudflareProvider | port-forwarder-app | ✅ |
+| WslProvider | wsl-manager-gui | âœ… |
+| WslConfigProvider | wsl-manager-gui | âœ… |
+| ResourceProvider | wsl-manager-gui | âœ… |
+| AutoStartProvider | wsl-manager-gui | âœ… |
+| NetshProvider | port-forwarder-app | âœ… |
+| WslIpProvider | port-forwarder-app | âœ… |
+| SshTunnelProvider | port-forwarder-app | âœ… |
+| TailscaleProvider | port-forwarder-app | âœ… |
+| CloudflareProvider | port-forwarder-app | âœ… |
 
 ### 8.3 Interfaces
 
 | Interfaz | Puerto | Estado |
 |---|---|---|
-| CLI | - | ✅ |
-| GUI (tkinter) | - | ✅ |
-| Web Panel | 8780 | ✅ |
-| API REST | 8781 | ✅ |
-| MCP | 8782 | ✅ |
+| CLI | - | âœ… |
+| GUI (tkinter) | - | âœ… |
+| Web Panel | 8780 | âœ… |
+| API REST | 8781 | âœ… |
+| MCP | 8782 | âœ… |
 
 ---
 
@@ -296,7 +296,7 @@ drift_check, doctor
 
 | Bug | Solucion | Commit |
 |---|---|---|
-| Unicode error en CLI (flechas ↓↑) | Reemplazado por dl:/ul: | d2ceb85 |
+| Unicode error en CLI (flechas â†“â†‘) | Reemplazado por dl:/ul: | d2ceb85 |
 | Tunnel revivia despues de stop manual | tunnel_manually_stopped set | 2db5e7b |
 | SSH abria ventana de terminal | CREATE_NO_WINDOW flag | ae473c0 |
 | SSH fallaba sin identity file | No incluir -i cuando hay password | ae473c0 |
@@ -366,27 +366,27 @@ pydantic-settings>=2.2
 
 ```
 wsl-port/
-├── run.py                  # Entry point (GUI / headless)
-├── wsl-port.vbs            # Lanzador sin consola
-├── vendor_copy.py          # Genera vendor/ desde repos base
-├── pyproject.toml          # Configuracion del paquete
-├── wsl_port/
-│   ├── __init__.py
-│   ├── core.py             # Nucleo integrado (providers directos)
-│   ├── cli.py              # CLI completo (30 comandos)
-│   ├── publish.py          # Flujo publish/unpublish
-│   ├── ui/
-│   │   ├── __init__.py
-│   │   ├── main_window.py  # GUI principal (6 pestanas)
-│   │   └── publish_tab.py  # Pestana Publicar
-│   └── vendor/             # Auto-generado (wsl_manager + port_forwarder)
-├── tests/
-│   └── test_publish.py     # 7 unit tests
-├── config/
-│   └── config.example.json
-├── scripts/
-├── vps/
-└── docs/
+â”œâ”€â”€ run.py                  # Entry point (GUI / headless)
+â”œâ”€â”€ wsl-port.vbs            # Lanzador sin consola
+â”œâ”€â”€ vendor_copy.py          # Genera vendor/ desde repos base
+â”œâ”€â”€ pyproject.toml          # Configuracion del paquete
+â”œâ”€â”€ wsl_port/
+â”‚   â”œâ”€â”€ __init__.py
+â”‚   â”œâ”€â”€ core.py             # Nucleo integrado (providers directos)
+â”‚   â”œâ”€â”€ cli.py              # CLI completo (30 comandos)
+â”‚   â”œâ”€â”€ publish.py          # Flujo publish/unpublish
+â”‚   â”œâ”€â”€ ui/
+â”‚   â”‚   â”œâ”€â”€ __init__.py
+â”‚   â”‚   â”œâ”€â”€ main_window.py  # GUI principal (6 pestanas)
+â”‚   â”‚   â””â”€â”€ publish_tab.py  # Pestana Publicar
+â”‚   â””â”€â”€ vendor/             # Auto-generado (wsl_manager + port_forwarder)
+â”œâ”€â”€ tests/
+â”‚   â””â”€â”€ test_publish.py     # 7 unit tests
+â”œâ”€â”€ config/
+â”‚   â””â”€â”€ config.example.json
+â”œâ”€â”€ scripts/
+â”œâ”€â”€ vps/
+â””â”€â”€ docs/
 ```
 
 ---
@@ -410,9 +410,10 @@ wsl-port/
 - **Sin ventanas de terminal** (CREATE_NO_WINDOW)
 - **Tunnels detenidos manualmente no reviven**
 
-### Estado: **PRODUCCION LISTO** ✅
+### Estado: **PRODUCCION LISTO** âœ…
 
 ---
 
 **Reporte generado por wsl-port v1.0**  
 **Fecha:** 2026-08-22 20:52
+
