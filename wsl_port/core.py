@@ -125,29 +125,54 @@ def watcher():
 # WSL lifecycle (W1-W7)
 # ---------------------------------------------------------------------------
 
-def distros() -> list[dict]:
-    """Lista distros WSL con estado, version, IP."""
+# IP cache to avoid slow WSL calls on every refresh
+_ip_cache: dict[str, tuple[str, float]] = {}  # name -> (ip, timestamp)
+_IP_CACHE_TTL = 30.0  # seconds
+
+
+def _get_ip_fast(name: str) -> str | None:
+    """Get IP with caching to avoid slow WSL calls."""
+    import time
+    now = time.time()
+    cached = _ip_cache.get(name)
+    if cached and (now - cached[1]) < _IP_CACHE_TTL:
+        return cached[0]
+    try:
+        import subprocess
+        proc = subprocess.run(
+            ["wsl.exe", "-d", name, "hostname", "-I"],
+            capture_output=True, text=True, timeout=5,
+            creationflags=0x08000000
+        )
+        if proc.returncode == 0:
+            ip = proc.stdout.strip().split()[0] if proc.stdout.strip() else None
+            if ip and not ip.startswith("169.254"):
+                _ip_cache[name] = (ip, now)
+                return ip
+    except Exception:
+        pass
+    return cached[0] if cached else None
+
+
+def distros(skip_ips: bool = False) -> list[dict]:
+    """Lista distros WSL con estado, version, IP.
+    
+    Args:
+        skip_ips: If True, skip IP detection (fast refresh for GUI).
+    """
     try:
         wsl = wsl_provider()
         result = []
         for d in wsl.list_distros():
             entry = {"name": d.name, "state": d.state, "version": d.version,
                      "default": d.default, "ip": None, "running": d.state == "Running"}
-            if entry["running"]:
-                try:
-                    # Use timeout for IP detection to avoid hanging
-                    import subprocess
-                    proc = subprocess.run(
-                        ["wsl.exe", "-d", d.name, "hostname", "-I"],
-                        capture_output=True, text=True, timeout=10,
-                        creationflags=0x08000000
-                    )
-                    if proc.returncode == 0:
-                        ip = proc.stdout.strip().split()[0] if proc.stdout.strip() else None
-                        if ip and not ip.startswith("169.254"):
-                            entry["ip"] = ip
-                except Exception:
-                    pass
+            if entry["running"] and not skip_ips:
+                entry["ip"] = _get_ip_fast(d.name)
+            elif entry["running"]:
+                # Use cached IP if available
+                cached = _ip_cache.get(d.name)
+                if cached:
+                    entry["ip"] = cached[0]
             result.append(entry)
         return result
     except Exception as e:
@@ -904,9 +929,13 @@ def doctor() -> dict:
 # Unified status
 # ---------------------------------------------------------------------------
 
-def status() -> dict:
-    """Estado integrado: distros WSL + forwards/tunnels/VPS + supervisor."""
-    ds = distros()
+def status(fast: bool = False) -> dict:
+    """Estado integrado: distros WSL + forwards/tunnels/VPS + supervisor.
+    
+    Args:
+        fast: If True, skip slow operations (IP detection) for GUI refresh.
+    """
+    ds = distros(skip_ips=fast)
     fwds = forwards()
     tuns = tunnels()
     vps = vps_list()

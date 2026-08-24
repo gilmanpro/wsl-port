@@ -288,7 +288,7 @@ class MainWindow:
         bar = ttk.Frame(parent)
         bar.pack(fill="x", pady=(0, 8))
         for text, style, cmd in [
-            ("Refrescar", "success", self._refresh),
+            ("Refrescar", "success", self._refresh_full),
             ("Iniciar", "info", self._start_selected_distro),
             ("Detener", "warning", self._stop_selected_distro),
             ("Reiniciar", "info", self._restart_selected_distro),
@@ -314,7 +314,7 @@ class MainWindow:
         tun_bar = ttk.Frame(parent)
         tun_bar.pack(fill="x", pady=(0, 8))
         for text, style, cmd in [
-            ("Refrescar", "success", self._refresh),
+            ("Refrescar", "success", self._refresh_full),
             ("Nuevo Tunnel...", "info", self._add_tunnel_dialog),
             ("Iniciar", "success outline", self._start_selected_tunnel),
             ("Detener", "warning outline", self._stop_selected_tunnel),
@@ -345,7 +345,7 @@ class MainWindow:
         bar = ttk.Frame(parent)
         bar.pack(fill="x", pady=(0, 8))
         for text, style, cmd in [
-            ("Refrescar", "success", self._refresh),
+            ("Refrescar", "success", self._refresh_full),
             ("Nuevo Forward...", "info", self._add_forward_dialog),
             ("Reaplicar todos", "info outline", self._apply_forwards),
             ("Eliminar", "danger outline", self._remove_selected_forward),
@@ -1243,18 +1243,22 @@ class MainWindow:
 
     # -- datos / refresco ---------------------------------------------------------
 
-    def _work(self):
+    def _work(self, fast: bool = False):
         try:
-            return core.status()
+            return core.status(fast=fast)
         except Exception as e:
             return {"error": str(e)}
 
-    def _refresh(self) -> None:
-        threading.Thread(target=self._worker, daemon=True).start()
+    def _refresh(self, fast: bool = False) -> None:
+        threading.Thread(target=self._worker, args=(fast,), daemon=True).start()
 
-    def _worker(self) -> None:
+    def _refresh_full(self) -> None:
+        """Manual refresh with full IP detection."""
+        self._refresh(fast=False)
+
+    def _worker(self, fast: bool = False) -> None:
         try:
-            self._q.put(self._work())
+            self._q.put(self._work(fast=fast))
         except Exception as e:
             self._q.put({"error": str(e)})
 
@@ -1266,8 +1270,8 @@ class MainWindow:
         self.root.after(200, self._poll)
 
     def _schedule_refresh(self) -> None:
-        self._refresh()
-        self.root.after(15000, self._schedule_refresh)
+        self._refresh(fast=True)  # Fast refresh for periodic updates
+        self.root.after(30000, self._schedule_refresh)  # Every 30 seconds
 
     def _apply(self) -> None:
         while True:
