@@ -25,6 +25,10 @@ log = logging.getLogger("wsl-port.core")
 _wsl_healthy = None  # None = unknown, True = ok, False = hung
 _wsl_last_check = 0.0
 _WSL_CHECK_INTERVAL = 30.0  # seconds between health checks
+_wsl_recovery_attempts = 0
+_WSL_MAX_RECOVERY_ATTEMPTS = 3
+_wsl_last_recovery = 0.0
+_WSL_RECOVERY_COOLDOWN = 60.0  # seconds between recovery attempts
 
 
 def wsl_health_check(force: bool = False) -> bool:
@@ -66,6 +70,89 @@ def wsl_health_check(force: bool = False) -> bool:
 def wsl_is_hung() -> bool:
     """Quick check if WSL is hung (uses cached result)."""
     return not wsl_health_check()
+
+
+def wsl_auto_recovery() -> bool:
+    """Attempt to automatically recover hung WSL.
+    
+    Returns True if recovery was successful, False otherwise.
+    Uses a cooldown to avoid repeated attempts.
+    """
+    global _wsl_recovery_attempts, _wsl_last_recovery, _wsl_healthy, _wsl_last_check
+    import time as _time
+    
+    now = _time.time()
+    
+    # Check cooldown
+    if (now - _wsl_last_recovery) < _WSL_RECOVERY_COOLDOWN:
+        return False
+    
+    # Check max attempts
+    if _wsl_recovery_attempts >= _WSL_MAX_RECOVERY_ATTEMPTS:
+        log.warning("WSL auto-recovery: max attempts (%d) reached", _WSL_MAX_RECOVERY_ATTEMPTS)
+        return False
+    
+    log.info("WSL auto-recovery: attempt %d/%d", _wsl_recovery_attempts + 1, _WSL_MAX_RECOVERY_ATTEMPTS)
+    _wsl_last_recovery = now
+    _wsl_recovery_attempts += 1
+    
+    # Step 1: Try wsl --shutdown (fast, non-destructive)
+    try:
+        proc = subprocess.run(
+            ["wsl.exe", "--shutdown"],
+            capture_output=True, timeout=10,
+            creationflags=0x08000000
+        )
+        log.info("WSL auto-recovery: wsl --shutdown completed (rc=%d)", proc.returncode)
+    except subprocess.TimeoutExpired:
+        log.warning("WSL auto-recovery: wsl --shutdown timeout")
+    except Exception as e:
+        log.warning("WSL auto-recovery: wsl --shutdown error: %s", e)
+    
+    # Step 2: Wait a bit
+    import time
+    time.sleep(3)
+    
+    # Step 3: Check if WSL is now healthy
+    _wsl_healthy = None  # Force re-check
+    _wsl_last_check = 0.0
+    if wsl_health_check(force=True):
+        log.info("WSL auto-recovery: SUCCESS!")
+        _wsl_recovery_attempts = 0  # Reset counter on success
+        return True
+    
+    # Step 4: If still hung, try killing WSL processes
+    log.info("WSL auto-recovery: killing WSL processes...")
+    try:
+        subprocess.run(
+            ["taskkill", "/F", "/IM", "wsl.exe"],
+            capture_output=True, timeout=10,
+            creationflags=0x08000000
+        )
+        subprocess.run(
+            ["taskkill", "/F", "/IM", "wslhost.exe"],
+            capture_output=True, timeout=10,
+            creationflags=0x08000000
+        )
+        subprocess.run(
+            ["taskkill", "/F", "/IM", "wslrelay.exe"],
+            capture_output=True, timeout=10,
+            creationflags=0x08000000
+        )
+    except Exception as e:
+        log.warning("WSL auto-recovery: taskkill error: %s", e)
+    
+    # Step 5: Wait and check again
+    time.sleep(5)
+    _wsl_healthy = None
+    _wsl_last_check = 0.0
+    if wsl_health_check(force=True):
+        log.info("WSL auto-recovery: SUCCESS after killing processes!")
+        _wsl_recovery_attempts = 0
+        return True
+    
+    log.warning("WSL auto-recovery: FAILED (attempt %d/%d)", _wsl_recovery_attempts, _WSL_MAX_RECOVERY_ATTEMPTS)
+    return False
 
 
 def wsl_recovery_hint() -> str:
@@ -223,8 +310,12 @@ def distros(skip_ips: bool = False) -> list[dict]:
     """
     # Check WSL health first
     if not wsl_health_check():
-        log.warning("distros() skipped: WSL is hung")
-        return []
+        # Attempt auto-recovery
+        if wsl_auto_recovery():
+            log.info("distros() recovered WSL successfully")
+        else:
+            log.warning("distros() skipped: WSL is hung")
+            return []
     
     try:
         wsl = wsl_provider()
@@ -1002,6 +1093,13 @@ def status(fast: bool = False) -> dict:
         fast: If True, skip slow operations (IP detection) for GUI refresh.
     """
     wsl_ok = wsl_health_check()
+    
+    # Attempt auto-recovery if WSL is hung
+    if not wsl_ok:
+        if wsl_auto_recovery():
+            wsl_ok = True
+            log.info("status() recovered WSL successfully")
+    
     ds = distros(skip_ips=fast) if wsl_ok else []
     fwds = forwards()
     tuns = tunnels()
