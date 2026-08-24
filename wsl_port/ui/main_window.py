@@ -1258,11 +1258,22 @@ class MainWindow:
             if "error" in st:
                 self.status_var.set(f"error: {st['error']}")
                 continue
+            
+            # Check WSL health
+            wsl_hung = st.get("wsl_hung", False)
+            if wsl_hung:
+                self.header_status.configure(
+                    text="WSL COLGADO - Ejecuta fix-wsl-robust.bat como admin",
+                    foreground="red")
+                self._notify("WSL", "WSL esta colgado! Ejecuta fix-wsl-robust.bat")
+                continue
+            
             up = sum(1 for d in st["distros"] if d.get("running"))
             tun_ok = sum(1 for t in st["tunnels"] if t.get("state") == "running")
             self.header_status.configure(
                 text=f"distros {up}/{len(st['distros'])} · tuneles {tun_ok}/{len(st['tunnels'])}"
-                     + (" · MANTENIMIENTO" if st["maintenance"] else ""))
+                     + (" · MANTENIMIENTO" if st["maintenance"] else ""),
+                foreground="white")
             self._fill(self.distro_tree, [
                 [d.get("name", "?"), d.get("state", "?"), d.get("ip") or "-",
                  str(d.get("version", "?"))] for d in st["distros"]])

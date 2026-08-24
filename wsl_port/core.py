@@ -10,12 +10,73 @@ import json
 import logging
 import re
 import socket
+import subprocess
 import threading
 import time
 from pathlib import Path
 from typing import Any
 
 log = logging.getLogger("wsl-port.core")
+
+# ---------------------------------------------------------------------------
+# WSL Health Check & Auto-Recovery
+# ---------------------------------------------------------------------------
+
+_wsl_healthy = None  # None = unknown, True = ok, False = hung
+_wsl_last_check = 0.0
+_WSL_CHECK_INTERVAL = 30.0  # seconds between health checks
+
+
+def wsl_health_check(force: bool = False) -> bool:
+    """Check if WSL is responsive. Returns True if healthy.
+    
+    Uses a fast 5s timeout to detect hung WSL quickly.
+    Caches result for 30s to avoid repeated checks.
+    """
+    global _wsl_healthy, _wsl_last_check
+    import time as _time
+    
+    now = _time.time()
+    if not force and _wsl_healthy is not None and (now - _wsl_last_check) < _WSL_CHECK_INTERVAL:
+        return _wsl_healthy
+    
+    try:
+        proc = subprocess.run(
+            ["wsl.exe", "--list", "--verbose"],
+            capture_output=True, timeout=5,
+            creationflags=0x08000000
+        )
+        _wsl_healthy = proc.returncode == 0
+        _wsl_last_check = now
+        if not _wsl_healthy:
+            log.warning("WSL health check failed: returncode=%d", proc.returncode)
+        return _wsl_healthy
+    except subprocess.TimeoutExpired:
+        _wsl_healthy = False
+        _wsl_last_check = now
+        log.warning("WSL health check: TIMEOUT (5s) - WSL is hung")
+        return False
+    except Exception as e:
+        _wsl_healthy = False
+        _wsl_last_check = now
+        log.warning("WSL health check error: %s", e)
+        return False
+
+
+def wsl_is_hung() -> bool:
+    """Quick check if WSL is hung (uses cached result)."""
+    return not wsl_health_check()
+
+
+def wsl_recovery_hint() -> str:
+    """Return a hint for recovering hung WSL."""
+    return (
+        "WSL esta colgado. Para recuperarlo:\n"
+        "1. Abre CMD como administrador\n"
+        "2. Ejecuta: wsl --shutdown\n"
+        "3. Si no responde, ejecuta: fix-wsl-robust.bat\n"
+        "4. Si nada funciona, reinicia el PC"
+    )
 
 # ---------------------------------------------------------------------------
 # Lazy singletons
@@ -160,6 +221,11 @@ def distros(skip_ips: bool = False) -> list[dict]:
     Args:
         skip_ips: If True, skip IP detection (fast refresh for GUI).
     """
+    # Check WSL health first
+    if not wsl_health_check():
+        log.warning("distros() skipped: WSL is hung")
+        return []
+    
     try:
         wsl = wsl_provider()
         result = []
@@ -935,7 +1001,8 @@ def status(fast: bool = False) -> dict:
     Args:
         fast: If True, skip slow operations (IP detection) for GUI refresh.
     """
-    ds = distros(skip_ips=fast)
+    wsl_ok = wsl_health_check()
+    ds = distros(skip_ips=fast) if wsl_ok else []
     fwds = forwards()
     tuns = tunnels()
     vps = vps_list()
@@ -948,6 +1015,8 @@ def status(fast: bool = False) -> dict:
         "supervisor_running": sup.running if hasattr(sup, "running") else False,
         "maintenance": pf_store().cfg.maintenance.active,
         "admin": _is_admin(),
+        "wsl_healthy": wsl_ok,
+        "wsl_hung": not wsl_ok,
     }
 
 
