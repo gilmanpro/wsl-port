@@ -113,26 +113,26 @@ def wsl_auto_recovery() -> bool:
     try:
         subprocess.run(
             ["net", "stop", "WSLService"],
-            capture_output=True, timeout=10,
+            capture_output=True, timeout=15,
             creationflags=0x08000000
         )
     except Exception:
         pass
     
     import time
-    time.sleep(2)
+    time.sleep(5)
     
     try:
         subprocess.run(
             ["net", "start", "WSLService"],
-            capture_output=True, timeout=10,
+            capture_output=True, timeout=15,
             creationflags=0x08000000
         )
     except Exception:
         pass
     
     # Step 3: Wait for service to stabilize
-    time.sleep(5)
+    time.sleep(10)
     
     # Step 4: Check if WSL is now healthy
     _wsl_healthy = None  # Force re-check
