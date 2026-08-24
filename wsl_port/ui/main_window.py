@@ -200,6 +200,20 @@ class MainWindow:
         self.root.lift()
         self.root.focus_force()
 
+    def _notify(self, title: str, message: str, level: str = "info") -> None:
+        """Mostrar notificacion toast de Windows."""
+        try:
+            from winotify import Notification
+            toast = Notification(
+                app_id="wsl-port",
+                title=title,
+                msg=message,
+            )
+            toast.show()
+        except Exception:
+            # Fallback: print to console
+            print(f"[{level.upper()}] {title}: {message}")
+
     # -- UI ------------------------------------------------------------------
 
     def _build(self) -> None:
@@ -705,8 +719,10 @@ class MainWindow:
         name = self._get_selected_distro()
         if not name:
             return
+        self._notify("WSL", f"Iniciando {name}...")
         def _work():
-            core.start_distro(name)
+            r = core.start_distro(name)
+            self._notify("WSL", f"{name} iniciado" if r.get("ok", True) else f"Error: {r.get('error')}")
             self._q.put({"_action": "refresh"})
         threading.Thread(target=_work, daemon=True).start()
 
@@ -714,8 +730,10 @@ class MainWindow:
         name = self._get_selected_distro()
         if not name:
             return
+        self._notify("WSL", f"Deteniendo {name}...")
         def _work():
-            core.stop_distro(name)
+            r = core.stop_distro(name)
+            self._notify("WSL", f"{name} detenido" if r.get("ok", True) else f"Error: {r.get('error')}")
             self._q.put({"_action": "refresh"})
         threading.Thread(target=_work, daemon=True).start()
 
@@ -723,8 +741,10 @@ class MainWindow:
         name = self._get_selected_distro()
         if not name:
             return
+        self._notify("WSL", f"Reiniciando {name}...")
         def _work():
-            core.restart_distro(name)
+            r = core.restart_distro(name)
+            self._notify("WSL", f"{name} reiniciado" if r.get("ok", True) else f"Error: {r.get('error')}")
             self._q.put({"_action": "refresh"})
         threading.Thread(target=_work, daemon=True).start()
 
@@ -735,35 +755,39 @@ class MainWindow:
             return
         import subprocess
         try:
-            # Open Windows Terminal with WSL distro
             subprocess.Popen(
                 ["wt.exe", "wsl", "-d", name],
-                creationflags=0x08000000,  # CREATE_NO_WINDOW
+                creationflags=0x08000000,
             )
+            self._notify("Terminal", f"Terminal abierta en {name}")
         except FileNotFoundError:
-            # Fallback to cmd.exe
             try:
                 subprocess.Popen(
                     ["cmd.exe", "/c", "start", "cmd.exe", "/k", f"wsl -d {name}"],
                     creationflags=0x08000000,
                 )
+                self._notify("Terminal", f"Terminal abierta en {name}")
             except Exception as e:
                 from tkinter import messagebox
                 messagebox.showerror("Terminal", f"No se pudo abrir terminal: {e}")
 
     def _start_all_distros(self) -> None:
+        self._notify("WSL", "Iniciando todas las distros...")
         def _work():
             for d in core.distros():
                 if not d.get("running"):
                     core.start_distro(d["name"])
+            self._notify("WSL", "Todas las distros iniciadas")
             self._q.put({"_action": "refresh"})
         threading.Thread(target=_work, daemon=True).start()
 
     def _shutdown_all_distros(self) -> None:
         from tkinter import messagebox
         if messagebox.askyesno("Apagar todas", "Apagar WSL completamente?"):
+            self._notify("WSL", "Apagando WSL...")
             def _work():
                 core.shutdown_all()
+                self._notify("WSL", "WSL apagado")
                 self._q.put({"_action": "refresh"})
             threading.Thread(target=_work, daemon=True).start()
 
@@ -771,12 +795,15 @@ class MainWindow:
         name = self._get_selected_distro()
         if not name:
             return
+        self._notify("Snapshot", f"Creando snapshot de {name}...")
         from tkinter import messagebox
         def _work():
             r = core.snapshot(name)
             if r.get("ok"):
+                self._notify("Snapshot", f"Snapshot de {name} creado")
                 messagebox.showinfo("Snapshot", f"Snapshot creado:\n{r['path']}")
             else:
+                self._notify("Snapshot", f"Error: {r.get('error')}")
                 messagebox.showerror("Snapshot", f"Error: {r.get('error')}")
         threading.Thread(target=_work, daemon=True).start()
 
@@ -784,6 +811,7 @@ class MainWindow:
         name = self._get_selected_distro()
         if not name:
             return
+        self._notify("Metricas", f"Obteniendo metricas de {name}...")
         from tkinter import messagebox
         m = core.distro_metrics(name)
         if m is None:
@@ -813,13 +841,16 @@ class MainWindow:
         if not dlg.result:
             return
         distro_name = dlg.result["name"].strip()
+        self._notify("Crear distro", f"Instalando {distro_name}...")
         def _work():
             messagebox.showinfo("Crear distro",
                                 f"Instalando '{distro_name}'...\nEsto puede tardar varios minutos.")
             r = core.create_distro(distro_name, no_launch=True)
             if r.get("ok"):
+                self._notify("Crear distro", f"Distro '{distro_name}' instalada")
                 messagebox.showinfo("Crear distro", f"Distro '{distro_name}' instalada correctamente")
             else:
+                self._notify("Crear distro", f"Error: {r.get('error')}")
                 messagebox.showerror("Crear distro", f"Error: {r.get('error')}")
             self._q.put({"_action": "refresh"})
         threading.Thread(target=_work, daemon=True).start()
@@ -833,11 +864,14 @@ class MainWindow:
                                    f"ATENCION: Esto eliminara la distro '{name}' y TODOS sus datos.\n\n"
                                    "¿Continuar?"):
             return
+        self._notify("Eliminar distro", f"Eliminando {name}...")
         def _work():
             r = core.delete_distro(name)
             if r.get("ok"):
+                self._notify("Eliminar distro", f"Distro '{name}' eliminada")
                 messagebox.showinfo("Eliminar distro", f"Distro '{name}' eliminada")
             else:
+                self._notify("Eliminar distro", f"Error: {r.get('error')}")
                 messagebox.showerror("Eliminar distro", f"Error: {r.get('error')}")
             self._q.put({"_action": "refresh"})
         threading.Thread(target=_work, daemon=True).start()
@@ -853,12 +887,15 @@ class MainWindow:
             initialfile=f"{name}.tar")
         if not target:
             return
+        self._notify("Exportar", f"Exportando {name}...")
         def _work():
             messagebox.showinfo("Exportar", f"Exportando '{name}'...\nEsto puede tardar varios minutos.")
             r = core.export_distro(name, target)
             if r.get("ok"):
+                self._notify("Exportar", f"Distro '{name}' exportada")
                 messagebox.showinfo("Exportar", f"Distro '{name}' exportada a:\n{target}")
             else:
+                self._notify("Exportar", f"Error: {r.get('error')}")
                 messagebox.showerror("Exportar", f"Error: {r.get('error')}")
         threading.Thread(target=_work, daemon=True).start()
 
@@ -938,6 +975,7 @@ class MainWindow:
         if not dlg.result:
             return
         data = dlg.result
+        self._notify("Tunnel", f"Creando tunnel '{data['id']}'...")
         r = core.add_tunnel(
             tun_id=data["id"].strip(), vps_id=data["vps_id"].strip(),
             local_host=data.get("local_host", "127.0.0.1").strip() or "127.0.0.1",
@@ -946,17 +984,21 @@ class MainWindow:
             remote_port=int(data["remote_port"]))
         from tkinter import messagebox
         if r.get("ok"):
+            self._notify("Tunnel", f"Tunnel '{data['id']}' creado")
             messagebox.showinfo("Tunnel", f"Tunnel '{data['id']}' creado")
             self._refresh()
         else:
+            self._notify("Tunnel", f"Error: {r.get('error')}")
             messagebox.showerror("Tunnel", f"Error: {r.get('error')}")
 
     def _start_selected_tunnel(self) -> None:
         tid = self._get_selected_tunnel()
         if not tid:
             return
+        self._notify("Tunnel", f"Iniciando {tid}...")
         def _work():
-            core.start_tunnel(tid)
+            r = core.start_tunnel(tid)
+            self._notify("Tunnel", f"{tid} iniciado" if r.get("ok") else f"Error: {r.get('error')}")
             self._q.put({"_action": "refresh"})
         threading.Thread(target=_work, daemon=True).start()
 
@@ -964,8 +1006,10 @@ class MainWindow:
         tid = self._get_selected_tunnel()
         if not tid:
             return
+        self._notify("Tunnel", f"Deteniendo {tid}...")
         def _work():
-            core.stop_tunnel(tid)
+            r = core.stop_tunnel(tid)
+            self._notify("Tunnel", f"{tid} detenido" if r.get("ok") else f"Error: {r.get('error')}")
             self._q.put({"_action": "refresh"})
         threading.Thread(target=_work, daemon=True).start()
 
@@ -975,10 +1019,13 @@ class MainWindow:
             return
         from tkinter import messagebox
         if messagebox.askyesno("Eliminar tunnel", f"Eliminar tunnel '{tid}'?"):
+            self._notify("Tunnel", f"Eliminando {tid}...")
             r = core.remove_tunnel(tid)
             if r.get("ok"):
+                self._notify("Tunnel", f"{tid} eliminado")
                 self._refresh()
             else:
+                self._notify("Tunnel", f"Error: {r.get('error')}")
                 messagebox.showerror("Tunnel", f"Error: {r.get('error')}")
 
     # -- VPS actions ----------------------------------------------------------
@@ -1012,6 +1059,7 @@ class MainWindow:
         if not dlg.result:
             return
         data = dlg.result
+        self._notify("VPS", f"Creando VPS '{data['id']}'...")
         r = core.add_vps(
             vps_id=data["id"].strip(), host=data["host"].strip(),
             user=data.get("user", "").strip(), port=int(data.get("port", 22) or 22),
@@ -1019,9 +1067,11 @@ class MainWindow:
             password=data.get("password", "").strip())
         from tkinter import messagebox
         if r.get("ok"):
+            self._notify("VPS", f"VPS '{data['id']}' creado")
             messagebox.showinfo("VPS", f"VPS '{data['id']}' creado")
             self._refresh()
         else:
+            self._notify("VPS", f"Error: {r.get('error')}")
             messagebox.showerror("VPS", f"Error: {r.get('error')}")
 
     def _edit_vps_selected(self) -> None:
@@ -1053,6 +1103,7 @@ class MainWindow:
         if not dlg.result:
             return
         data = dlg.result
+        self._notify("VPS", f"Actualizando VPS '{vps_id}'...")
         core.remove_vps(vps_id)
         r = core.add_vps(
             vps_id=vps_id, host=data["host"].strip(),
@@ -1061,9 +1112,11 @@ class MainWindow:
             password=data.get("password", "").strip())
         from tkinter import messagebox
         if r.get("ok"):
+            self._notify("VPS", f"VPS '{vps_id}' actualizado")
             messagebox.showinfo("VPS", f"VPS '{vps_id}' actualizado")
             self._refresh()
         else:
+            self._notify("VPS", f"Error: {r.get('error')}")
             messagebox.showerror("VPS", f"Error: {r.get('error')}")
 
     def _remove_vps_selected(self) -> None:
@@ -1072,10 +1125,13 @@ class MainWindow:
             return
         from tkinter import messagebox
         if messagebox.askyesno("Eliminar VPS", f"Eliminar VPS '{vps_id}'?"):
+            self._notify("VPS", f"Eliminando VPS '{vps_id}'...")
             r = core.remove_vps(vps_id)
             if r.get("ok"):
+                self._notify("VPS", f"VPS '{vps_id}' eliminado")
                 self._refresh()
             else:
+                self._notify("VPS", f"Error: {r.get('error')}")
                 messagebox.showerror("VPS", f"Error: {r.get('error')}")
 
     # -- Forward actions ------------------------------------------------------
@@ -1120,12 +1176,14 @@ class MainWindow:
         data = dlg.result
         listen_addr = data.get("listen_address", "0.0.0.0 (todas)")
         listen_addr = listen_addr.split(" ")[0].strip()
+        self._notify("Forward", f"Creando forward '{data['id']}'...")
         r = core.add_forward(
             fwd_id=data["id"].strip(), listen_port=int(data["listen_port"]),
             wsl_distro=data["distro"].strip(), wsl_port=int(data["wsl_port"]),
             protocol=data.get("protocol", "tcp") or "tcp", listen_address=listen_addr)
         from tkinter import messagebox
         if r.get("ok"):
+            self._notify("Forward", f"Forward '{data['id']}' creado")
             messagebox.showinfo("Forward", f"Forward '{data['id']}' creado")
             self._refresh()
         else:
@@ -1137,23 +1195,30 @@ class MainWindow:
             return
         from tkinter import messagebox
         if messagebox.askyesno("Eliminar forward", f"Eliminar forward '{fwd_id}'?"):
+            self._notify("Forward", f"Eliminando forward '{fwd_id}'...")
             r = core.remove_forward(fwd_id)
             if r.get("ok"):
+                self._notify("Forward", f"Forward '{fwd_id}' eliminado")
                 self._refresh()
             else:
+                self._notify("Forward", f"Error: {r.get('error')}")
                 messagebox.showerror("Forward", f"Error: {r.get('error')}")
 
     def _apply_forwards(self) -> None:
+        self._notify("Forward", "Aplicando forwards...")
         def _work():
-            core.apply_forwards()
+            r = core.apply_forwards()
+            self._notify("Forward", "Forwards aplicados" if r.get("ok") else f"Error: {r.get('error')}")
             self._q.put({"_action": "refresh"})
         threading.Thread(target=_work, daemon=True).start()
 
     def _clear_forwards(self) -> None:
         from tkinter import messagebox
         if messagebox.askyesno("Limpiar forwards", "Eliminar TODOS los forwards de netsh?"):
+            self._notify("Forward", "Limpiando forwards...")
             def _work():
-                core.clear_forwards()
+                r = core.clear_forwards()
+                self._notify("Forward", "Forwards limpiados" if r.get("ok") else f"Error: {r.get('error')}")
                 self._q.put({"_action": "refresh"})
             threading.Thread(target=_work, daemon=True).start()
 
