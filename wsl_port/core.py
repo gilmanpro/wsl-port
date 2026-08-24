@@ -96,59 +96,50 @@ def wsl_auto_recovery() -> bool:
     _wsl_last_recovery = now
     _wsl_recovery_attempts += 1
     
-    # Step 1: Try wsl --shutdown (fast, non-destructive)
+    # Step 1: Kill WSL processes FIRST (more reliable than wsl --shutdown)
+    log.info("WSL auto-recovery: killing WSL processes...")
+    for proc_name in ["wsl.exe", "wslhost.exe", "wslrelay.exe"]:
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/IM", proc_name],
+                capture_output=True, timeout=5,
+                creationflags=0x08000000
+            )
+        except Exception:
+            pass
+    
+    # Step 2: Restart WSL service
+    log.info("WSL auto-recovery: restarting WSL service...")
     try:
-        proc = subprocess.run(
-            ["wsl.exe", "--shutdown"],
+        subprocess.run(
+            ["net", "stop", "WSLService"],
             capture_output=True, timeout=10,
             creationflags=0x08000000
         )
-        log.info("WSL auto-recovery: wsl --shutdown completed (rc=%d)", proc.returncode)
-    except subprocess.TimeoutExpired:
-        log.warning("WSL auto-recovery: wsl --shutdown timeout")
-    except Exception as e:
-        log.warning("WSL auto-recovery: wsl --shutdown error: %s", e)
+    except Exception:
+        pass
     
-    # Step 2: Wait a bit
     import time
-    time.sleep(3)
+    time.sleep(2)
     
-    # Step 3: Check if WSL is now healthy
+    try:
+        subprocess.run(
+            ["net", "start", "WSLService"],
+            capture_output=True, timeout=10,
+            creationflags=0x08000000
+        )
+    except Exception:
+        pass
+    
+    # Step 3: Wait for service to stabilize
+    time.sleep(5)
+    
+    # Step 4: Check if WSL is now healthy
     _wsl_healthy = None  # Force re-check
     _wsl_last_check = 0.0
     if wsl_health_check(force=True):
         log.info("WSL auto-recovery: SUCCESS!")
         _wsl_recovery_attempts = 0  # Reset counter on success
-        return True
-    
-    # Step 4: If still hung, try killing WSL processes
-    log.info("WSL auto-recovery: killing WSL processes...")
-    try:
-        subprocess.run(
-            ["taskkill", "/F", "/IM", "wsl.exe"],
-            capture_output=True, timeout=10,
-            creationflags=0x08000000
-        )
-        subprocess.run(
-            ["taskkill", "/F", "/IM", "wslhost.exe"],
-            capture_output=True, timeout=10,
-            creationflags=0x08000000
-        )
-        subprocess.run(
-            ["taskkill", "/F", "/IM", "wslrelay.exe"],
-            capture_output=True, timeout=10,
-            creationflags=0x08000000
-        )
-    except Exception as e:
-        log.warning("WSL auto-recovery: taskkill error: %s", e)
-    
-    # Step 5: Wait and check again
-    time.sleep(5)
-    _wsl_healthy = None
-    _wsl_last_check = 0.0
-    if wsl_health_check(force=True):
-        log.info("WSL auto-recovery: SUCCESS after killing processes!")
-        _wsl_recovery_attempts = 0
         return True
     
     log.warning("WSL auto-recovery: FAILED (attempt %d/%d)", _wsl_recovery_attempts, _WSL_MAX_RECOVERY_ATTEMPTS)
