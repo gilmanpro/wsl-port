@@ -279,6 +279,7 @@ class MainWindow:
             ("Apagar todas", "danger outline", self._shutdown_all_distros),
             ("Snapshot", "secondary", self._snapshot_selected),
             ("Metricas", "secondary", self._show_metrics),
+            ("Terminal", "primary", self._open_terminal),
             ("Crear...", "success outline", self._create_distro_dialog),
             ("Eliminar", "danger outline", self._delete_selected_distro),
             ("Exportar...", "secondary outline", self._export_selected_distro),
@@ -726,6 +727,29 @@ class MainWindow:
             core.restart_distro(name)
             self._q.put({"_action": "refresh"})
         threading.Thread(target=_work, daemon=True).start()
+
+    def _open_terminal(self) -> None:
+        """Abrir una terminal en la distro WSL seleccionada."""
+        name = self._get_selected_distro()
+        if not name:
+            return
+        import subprocess
+        try:
+            # Open Windows Terminal with WSL distro
+            subprocess.Popen(
+                ["wt.exe", "-d", name],
+                creationflags=0x08000000,  # CREATE_NO_WINDOW
+            )
+        except FileNotFoundError:
+            # Fallback to cmd.exe
+            try:
+                subprocess.Popen(
+                    ["cmd.exe", "/c", "start", "cmd.exe", "/k", f"wsl -d {name}"],
+                    creationflags=0x08000000,
+                )
+            except Exception as e:
+                from tkinter import messagebox
+                messagebox.showerror("Terminal", f"No se pudo abrir terminal: {e}")
 
     def _start_all_distros(self) -> None:
         def _work():
