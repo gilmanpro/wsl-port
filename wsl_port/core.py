@@ -242,6 +242,8 @@ def distros(skip_ips: bool = False) -> list[dict]:
 
 
 def start_distro(name: str) -> dict:
+    if not wsl_health_check():
+        return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
         r = wsl_provider().start(name)
         return {"ok": r.ok, "output": r.output, "error": r.error}
@@ -250,6 +252,8 @@ def start_distro(name: str) -> dict:
 
 
 def stop_distro(name: str) -> dict:
+    if not wsl_health_check():
+        return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
         r = wsl_provider().stop(name)
         return {"ok": r.ok, "output": r.output, "error": r.error}
@@ -258,6 +262,8 @@ def stop_distro(name: str) -> dict:
 
 
 def restart_distro(name: str) -> dict:
+    if not wsl_health_check():
+        return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
         r = wsl_provider().restart(name)
         return {"ok": r.ok, "output": r.output, "error": r.error}
@@ -266,6 +272,8 @@ def restart_distro(name: str) -> dict:
 
 
 def shutdown_all() -> dict:
+    if not wsl_health_check():
+        return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
         r = wsl_provider().shutdown_all()
         return {"ok": r.ok, "output": r.output, "error": r.error}
@@ -274,6 +282,8 @@ def shutdown_all() -> dict:
 
 
 def get_ip(name: str) -> str | None:
+    if not wsl_health_check():
+        return None
     try:
         import subprocess
         proc = subprocess.run(
@@ -291,6 +301,8 @@ def get_ip(name: str) -> str | None:
 
 
 def get_all_ips() -> dict[str, str | None]:
+    if not wsl_health_check():
+        return {}
     try:
         return wsl_provider().get_all_ips()
     except Exception:
@@ -299,6 +311,8 @@ def get_all_ips() -> dict[str, str | None]:
 
 def create_distro(name: str, no_launch: bool = True) -> dict:
     """Crear una nueva distro WSL desde el catalogo (wsl --install)."""
+    if not wsl_health_check():
+        return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
         r = wsl_provider().install_new(name, no_launch=no_launch)
         return {"ok": r.ok, "output": r.output, "error": r.error}
@@ -308,6 +322,8 @@ def create_distro(name: str, no_launch: bool = True) -> dict:
 
 def delete_distro(name: str) -> dict:
     """Eliminar una distro WSL (wsl --unregister)."""
+    if not wsl_health_check():
+        return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
         from wsl_port.vendor.wsl_manager.utils.subprocess_async import run
         r = run(["wsl.exe", "--unregister", name], timeout=60)
@@ -318,6 +334,8 @@ def delete_distro(name: str) -> dict:
 
 def list_available_distros() -> list[str]:
     """Listar distros disponibles para instalar (wsl --list --online)."""
+    if not wsl_health_check():
+        return []
     try:
         from wsl_port.vendor.wsl_manager.utils.subprocess_async import run
         r = run(["wsl.exe", "--list", "--online"], timeout=30)
@@ -338,6 +356,8 @@ def list_available_distros() -> list[str]:
 
 
 def distro_metrics(name: str) -> dict | None:
+    if not wsl_health_check():
+        return None
     try:
         m = wsl_provider().metrics(name)
         if m is None:
@@ -352,6 +372,8 @@ def distro_metrics(name: str) -> dict | None:
 
 
 def snapshot(name: str) -> dict:
+    if not wsl_health_check():
+        return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
         p = wsl_provider().snapshot(name)
         return {"ok": True, "path": str(p)}
@@ -360,6 +382,8 @@ def snapshot(name: str) -> dict:
 
 
 def clone(name: str, new_name: str) -> dict:
+    if not wsl_health_check():
+        return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
         r = wsl_provider().clone(name, new_name)
         return {"ok": r.ok, "output": r.output, "error": r.error}
@@ -368,6 +392,8 @@ def clone(name: str, new_name: str) -> dict:
 
 
 def export_distro(name: str, target: str) -> dict:
+    if not wsl_health_check():
+        return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
         r = wsl_provider().export(name, target)
         return {"ok": r.ok, "output": r.output, "error": r.error}
@@ -376,6 +402,8 @@ def export_distro(name: str, target: str) -> dict:
 
 
 def import_distro(source: str, name: str, install_dir: str) -> dict:
+    if not wsl_health_check():
+        return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
         r = wsl_provider().import_distro(source, name, install_dir)
         return {"ok": r.ok, "output": r.output, "error": r.error}
@@ -384,6 +412,8 @@ def import_distro(source: str, name: str, install_dir: str) -> dict:
 
 
 def run_command(name: str, cmd: str) -> dict:
+    if not wsl_health_check():
+        return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
         r = wsl_provider().run_command(name, cmd)
         return {"ok": r.ok, "output": r.output, "error": r.error}
@@ -783,11 +813,10 @@ def resolve_alert(alert_id: int) -> dict:
 
 def schedule_list() -> list[dict]:
     try:
-        from wsl_port.vendor.port_forwarder.core.scheduler import Scheduler
-        sched = Scheduler(store=pf_store(), supervisor=supervisor(), metrics=metrics_pf())
+        store = pf_store()
         return [{"id": t.id, "name": t.name, "action": t.action.type,
                  "schedule": t.schedule, "enabled": t.enabled}
-                for t in sched.list_tasks()]
+                for t in store.cfg.scheduler]
     except Exception:
         return []
 
@@ -796,16 +825,16 @@ def schedule_add(name: str, action_type: str, time_str: str,
                  days: list[str] | None = None, tunnel: str = None,
                  profile: str = None) -> dict:
     try:
-        from wsl_port.vendor.port_forwarder.core.scheduler import Scheduler
         from wsl_port.vendor.port_forwarder.core.config import ScheduleItem, ScheduleAction
-        sched = Scheduler(store=pf_store(), supervisor=supervisor(), metrics=metrics_pf())
+        store = pf_store()
         item = ScheduleItem(
             id=f"tarea-{name.lower().replace(' ', '-')}",
             name=name,
             action=ScheduleAction(type=action_type, tunnel=tunnel, profile=profile),
             schedule={"days": days or ["mon", "tue", "wed", "thu", "fri"], "time": time_str},
         )
-        sched.add_task(item)
+        store.cfg.scheduler.append(item)
+        store.save()
         return {"ok": True, "message": f"Tarea '{name}' creada"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -813,9 +842,9 @@ def schedule_add(name: str, action_type: str, time_str: str,
 
 def schedule_remove(task_id: str) -> dict:
     try:
-        from wsl_port.vendor.port_forwarder.core.scheduler import Scheduler
-        sched = Scheduler(store=pf_store(), supervisor=supervisor(), metrics=metrics_pf())
-        sched.remove_task(task_id)
+        store = pf_store()
+        store.cfg.scheduler = [t for t in store.cfg.scheduler if t.id != task_id]
+        store.save()
         return {"ok": True, "message": f"Tarea '{task_id}' eliminada"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
