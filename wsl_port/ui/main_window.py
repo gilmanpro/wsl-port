@@ -38,7 +38,10 @@ _AUTOSTART_NAME = "wsl-port"
 
 def _autostart_command() -> str:
     import sys
-    return f'wscript.exe "{Path(sys.executable).parent.parent / "wsl-port.vbs"}"'
+    # Find project root (where wsl-port.vbs is)
+    project_root = Path(__file__).resolve().parent.parent.parent
+    vbs_path = project_root / "wsl-port.vbs"
+    return f'wscript.exe "{vbs_path}"'
 
 
 def autostart_active() -> bool:
