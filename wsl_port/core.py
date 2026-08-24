@@ -19,23 +19,20 @@ from typing import Any
 log = logging.getLogger("wsl-port.core")
 
 # ---------------------------------------------------------------------------
-# WSL Health Check & Auto-Recovery
+# WSL Health Check (simple - no auto-recovery)
 # ---------------------------------------------------------------------------
 
 _wsl_healthy = None  # None = unknown, True = ok, False = hung
 _wsl_last_check = 0.0
-_WSL_CHECK_INTERVAL = 30.0  # seconds between health checks
-_wsl_recovery_attempts = 0
-_WSL_MAX_RECOVERY_ATTEMPTS = 3
-_wsl_last_recovery = 0.0
-_WSL_RECOVERY_COOLDOWN = 60.0  # seconds between recovery attempts
+_WSL_CHECK_INTERVAL = 60.0  # seconds between health checks
 
 
 def wsl_health_check(force: bool = False) -> bool:
     """Check if WSL is responsive. Returns True if healthy.
     
-    Uses a fast 5s timeout to detect hung WSL quickly.
-    Caches result for 30s to avoid repeated checks.
+    Uses a fast 3s timeout to detect hung WSL quickly.
+    Caches result for 60s to avoid repeated checks.
+    NO auto-recovery - just detect and skip.
     """
     global _wsl_healthy, _wsl_last_check
     import time as _time
@@ -47,23 +44,21 @@ def wsl_health_check(force: bool = False) -> bool:
     try:
         proc = subprocess.run(
             ["wsl.exe", "--list", "--verbose"],
-            capture_output=True, timeout=5,
+            capture_output=True, timeout=3,
             creationflags=0x08000000
         )
         _wsl_healthy = proc.returncode == 0
         _wsl_last_check = now
-        if not _wsl_healthy:
-            log.warning("WSL health check failed: returncode=%d", proc.returncode)
         return _wsl_healthy
     except subprocess.TimeoutExpired:
         _wsl_healthy = False
         _wsl_last_check = now
-        log.warning("WSL health check: TIMEOUT (5s) - WSL is hung")
+        log.warning("WSL no responde (3s timeout) - reinicia el PC")
         return False
     except Exception as e:
         _wsl_healthy = False
         _wsl_last_check = now
-        log.warning("WSL health check error: %s", e)
+        log.warning("WSL error: %s", e)
         return False
 
 
@@ -72,89 +67,11 @@ def wsl_is_hung() -> bool:
     return not wsl_health_check()
 
 
-def wsl_auto_recovery() -> bool:
-    """Attempt to automatically recover hung WSL.
-    
-    Returns True if recovery was successful, False otherwise.
-    Uses a cooldown to avoid repeated attempts.
-    """
-    global _wsl_recovery_attempts, _wsl_last_recovery, _wsl_healthy, _wsl_last_check
-    import time as _time
-    
-    now = _time.time()
-    
-    # Check cooldown
-    if (now - _wsl_last_recovery) < _WSL_RECOVERY_COOLDOWN:
-        return False
-    
-    # Check max attempts
-    if _wsl_recovery_attempts >= _WSL_MAX_RECOVERY_ATTEMPTS:
-        log.warning("WSL auto-recovery: max attempts (%d) reached", _WSL_MAX_RECOVERY_ATTEMPTS)
-        return False
-    
-    log.info("WSL auto-recovery: attempt %d/%d", _wsl_recovery_attempts + 1, _WSL_MAX_RECOVERY_ATTEMPTS)
-    _wsl_last_recovery = now
-    _wsl_recovery_attempts += 1
-    
-    # Step 1: Kill WSL processes FIRST (more reliable than wsl --shutdown)
-    log.info("WSL auto-recovery: killing WSL processes...")
-    for proc_name in ["wsl.exe", "wslhost.exe", "wslrelay.exe"]:
-        try:
-            subprocess.run(
-                ["taskkill", "/F", "/IM", proc_name],
-                capture_output=True, timeout=5,
-                creationflags=0x08000000
-            )
-        except Exception:
-            pass
-    
-    # Step 2: Restart WSL service
-    log.info("WSL auto-recovery: restarting WSL service...")
-    try:
-        subprocess.run(
-            ["net", "stop", "WSLService"],
-            capture_output=True, timeout=15,
-            creationflags=0x08000000
-        )
-    except Exception:
-        pass
-    
-    import time
-    time.sleep(5)
-    
-    try:
-        subprocess.run(
-            ["net", "start", "WSLService"],
-            capture_output=True, timeout=15,
-            creationflags=0x08000000
-        )
-    except Exception:
-        pass
-    
-    # Step 3: Wait for service to stabilize
-    time.sleep(10)
-    
-    # Step 4: Check if WSL is now healthy
-    _wsl_healthy = None  # Force re-check
+def wsl_reset() -> None:
+    """Reset WSL health state (call after PC restart)."""
+    global _wsl_healthy, _wsl_last_check
+    _wsl_healthy = None
     _wsl_last_check = 0.0
-    if wsl_health_check(force=True):
-        log.info("WSL auto-recovery: SUCCESS!")
-        _wsl_recovery_attempts = 0  # Reset counter on success
-        return True
-    
-    log.warning("WSL auto-recovery: FAILED (attempt %d/%d)", _wsl_recovery_attempts, _WSL_MAX_RECOVERY_ATTEMPTS)
-    return False
-
-
-def wsl_recovery_hint() -> str:
-    """Return a hint for recovering hung WSL."""
-    return (
-        "WSL esta colgado. Para recuperarlo:\n"
-        "1. Abre CMD como administrador\n"
-        "2. Ejecuta: wsl --shutdown\n"
-        "3. Si no responde, ejecuta: fix-wsl-robust.bat\n"
-        "4. Si nada funciona, reinicia el PC"
-    )
 
 # ---------------------------------------------------------------------------
 # Lazy singletons
@@ -301,12 +218,8 @@ def distros(skip_ips: bool = False) -> list[dict]:
     """
     # Check WSL health first
     if not wsl_health_check():
-        # Attempt auto-recovery
-        if wsl_auto_recovery():
-            log.info("distros() recovered WSL successfully")
-        else:
-            log.warning("distros() skipped: WSL is hung")
-            return []
+        log.warning("distros() skipped: WSL no responde")
+        return []
     
     try:
         wsl = wsl_provider()
@@ -1054,12 +967,6 @@ def status(fast: bool = False) -> dict:
         fast: If True, skip slow operations (IP detection) for GUI refresh.
     """
     wsl_ok = wsl_health_check()
-    
-    # Attempt auto-recovery if WSL is hung
-    if not wsl_ok:
-        if wsl_auto_recovery():
-            wsl_ok = True
-            log.info("status() recovered WSL successfully")
     
     ds = distros(skip_ips=fast) if wsl_ok else []
     fwds = forwards()

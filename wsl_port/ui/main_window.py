@@ -1196,9 +1196,8 @@ class MainWindow:
             wsl_hung = st.get("wsl_hung", False)
             if wsl_hung:
                 self.header_status.configure(
-                    text="WSL COLGADO - Ejecuta fix-wsl-robust.bat como admin",
-                    foreground="red")
-                self._notify("WSL", "WSL esta colgado! Ejecuta fix-wsl-robust.bat")
+                    text="WSL no responde - reinicia el PC",
+                    foreground="orange")
                 continue
             
             up = sum(1 for d in st["distros"] if d.get("running"))
