@@ -1,4 +1,4 @@
-﻿# wsl-port â€” WSL + Internet en 1 clic
+﻿# wsl-port — WSL + Internet en 1 clic
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](#requisitos)
 [![Integracion](https://img.shields.io/badge/Integra-WSL%20Manager%20%2B%20Port%20Forwarding-2ea44f)](#caracteristicas-integradas)
@@ -7,18 +7,18 @@
 
 > **Publica cualquier servicio de tu WSL en Internet con 1 clic.** wsl-port une **WSL Manager** (tus distros) y **Port Forwarding Manager** (tuneles al VPS) en una sola ventana y un solo comando.
 
-**Reemplaza a las 2 apps por separado** â€” si usas wsl-port ya no necesitas abrir WSL Manager ni Port Forwarder.
+**Reemplaza a las 2 apps por separado** — si usas wsl-port ya no necesitas abrir WSL Manager ni Port Forwarder.
 
 ---
 
 ## Inicio rapido
 
-**Opcion A â€” Doble clic (recomendado, sin consola)**
+**Opcion A — Doble clic (recomendado, sin consola)**
 
 1. Doble clic en `wsl-port.vbs` o el acceso directo del Escritorio.
-2. Â¡Listo! No se abre ninguna terminal â€” todo queda en segundo plano.
+2. ¡Listo! No se abre ninguna terminal — todo queda en segundo plano.
 
-**Opcion B â€” Linea de comandos**
+**Opcion B — Linea de comandos**
 
 ```bash
 # Modo headless (fondo, sin ventana)
@@ -37,22 +37,22 @@ wsl-port status
 
 | Lo que ves | De donde viene |
 |---|---|
-| **Distros WSL** â€” estado, IP, iniciar/apagar, snapshots, clones, crear/eliminar | WSL Manager |
-| **Publicar en Internet** â€” asistente WSL -> VPS (1 clic) | **Nuevo: flujo integrado** |
-| **Tunnels / VPS** â€” estado, trafico, gestion VPS, latency | Port Forwarder |
-| **Forwards** â€” redirecciones Windows->WSL (netsh + firewall) | Port Forwarder |
-| **Limites de recursos** â€” .wslconfig (RAM, CPUs, swap) | WSL Manager |
-| **Autoarranque** â€” distros con Windows + delay | WSL Manager |
-| **Health checks** â€” TCP, alertas, umbrales configurables | Port Forwarder |
-| **Scheduler** â€” tareas programadas (dias/hora) | Ambos |
-| **Perfiles** â€” capturar/aplicar estados | Ambos |
-| **Maintenance** â€” pausar todo sin borrar config | Port Forwarder |
-| **Drift** â€” config vs realidad (deteccion + reconciliacion) | Port Forwarder |
-| **Doctor** â€” diagnostico del entorno | Ambos |
-| **Supervisor** â€” loop unificado (IPs + tunnels + forwards) | Port Forwarder |
-| **Panel web** â€” dashboard en `:8780` | Nuevo |
-| **API REST** â€” `:8781` con tokens + scopes | Nuevo |
-| **MCP** â€” `:8782` para agentes LLM | Nuevo |
+| **Distros WSL** — estado, IP, iniciar/apagar, snapshots, clones, crear/eliminar | WSL Manager |
+| **Publicar en Internet** — asistente WSL -> VPS (1 clic) | **Nuevo: flujo integrado** |
+| **Tunnels / VPS** — estado, trafico, gestion VPS, latency | Port Forwarder |
+| **Forwards** — redirecciones Windows->WSL (netsh + firewall) | Port Forwarder |
+| **Limites de recursos** — .wslconfig (RAM, CPUs, swap) | WSL Manager |
+| **Autoarranque** — distros con Windows + delay | WSL Manager |
+| **Health checks** — TCP, alertas, umbrales configurables | Port Forwarder |
+| **Scheduler** — tareas programadas (dias/hora) | Ambos |
+| **Perfiles** — capturar/aplicar estados | Ambos |
+| **Maintenance** — pausar todo sin borrar config | Port Forwarder |
+| **Drift** — config vs realidad (deteccion + reconciliacion) | Port Forwarder |
+| **Doctor** — diagnostico del entorno | Ambos |
+| **Supervisor** — loop unificado (IPs + tunnels + forwards) | Port Forwarder |
+| **Panel web** — dashboard en `:8780` | Nuevo |
+| **API REST** — `:8781` con tokens + scopes | Nuevo |
+| **MCP** — `:8782` para agentes LLM | Nuevo |
 
 ---
 
@@ -196,7 +196,7 @@ wsl-port publish --distro Debian --wsl-port 9000 --vps "vps1 de canada" --public
 wsl-port unpublish pub-debian-9000
 ```
 
-Desde la GUI: pestana **Publicar en Internet** â€” elige distro, puerto, VPS y puerto publico.
+Desde la GUI: pestana **Publicar en Internet** — elige distro, puerto, VPS y puerto publico.
 
 ---
 
@@ -235,12 +235,12 @@ wsl-port mcp serve                       # Servidor MCP stdio
 
 La GUI tiene 6 pestanas:
 
-1. **Distros WSL** â€” Iniciar, Detener, Reiniciar, Snapshot, Metricas, Crear, Eliminar, Exportar, Importar
-2. **Publicar en Internet** â€” Asistente 1-click (distro + puerto + VPS + puerto publico)
-3. **Tunnels / VPS** â€” Nuevo Tunnel, Iniciar, Detener, Eliminar, Nuevo VPS, Editar VPS
-4. **Forwards** â€” Nuevo Forward (con selector de direccion listen), Reaplicar, Eliminar
-5. **Logs** â€” Visor en vivo
-6. **Ajustes** â€” General, Supervisor, Panel Web, API REST, MCP, Rutas, Autoarranque
+1. **Distros WSL** — Iniciar, Detener, Reiniciar, Snapshot, Metricas, Crear, Eliminar, Exportar, Importar
+2. **Publicar en Internet** — Asistente 1-click (distro + puerto + VPS + puerto publico)
+3. **Tunnels / VPS** — Nuevo Tunnel, Iniciar, Detener, Eliminar, Nuevo VPS, Editar VPS
+4. **Forwards** — Nuevo Forward (con selector de direccion listen), Reaplicar, Eliminar
+5. **Logs** — Visor en vivo
+6. **Ajustes** — General, Supervisor, Panel Web, API REST, MCP, Rutas, Limites de recursos (.wslconfig), Autoarranque
 
 ---
 
@@ -248,22 +248,22 @@ La GUI tiene 6 pestanas:
 
 ```
 wsl-port/
-â”œâ”€â”€ run.py                  # Entry point (GUI / headless)
-â”œâ”€â”€ wsl-port.vbs            # Lanzador sin consola
-â”œâ”€â”€ vendor_copy.py          # Genera vendor/ desde repos base
-â”œâ”€â”€ pyproject.toml          # Configuracion del paquete
-â”œâ”€â”€ wsl_port/
-â”‚   â”œâ”€â”€ core.py             # Nucleo integrado (providers directos)
-â”‚   â”œâ”€â”€ cli.py              # CLI completo (20 grupos de comandos)
-â”‚   â”œâ”€â”€ publish.py          # Flujo publicar/despublicar
-â”‚   â”œâ”€â”€ ui/
-â”‚   â”‚   â”œâ”€â”€ main_window.py  # GUI (6 pestanas + ajustes)
-â”‚   â”‚   â””â”€â”€ publish_tab.py  # Asistente Publicar
-â”‚   â””â”€â”€ vendor/             # Auto-generado (wsl_manager + port_forwarder)
-â”œâ”€â”€ tests/                  # pytest (7 tests)
-â”œâ”€â”€ config/                 # Ejemplo de config
-â”œâ”€â”€ scripts/                # SSH key setup, autossh, build
-â””â”€â”€ vps/                    # sshd_config + install.sh
+├── run.py                  # Entry point (GUI / headless)
+├── wsl-port.vbs            # Lanzador sin consola
+├── vendor_copy.py          # Genera vendor/ desde repos base
+├── pyproject.toml          # Configuracion del paquete
+├── wsl_port/
+│   ├── core.py             # Nucleo integrado (providers directos)
+│   ├── cli.py              # CLI completo (20 grupos de comandos)
+│   ├── publish.py          # Flujo publicar/despublicar
+│   ├── ui/
+│   │   ├── main_window.py  # GUI (6 pestanas + ajustes)
+│   │   └── publish_tab.py  # Asistente Publicar
+│   └── vendor/             # Auto-generado (wsl_manager + port_forwarder)
+├── tests/                  # pytest (7 tests)
+├── config/                 # Ejemplo de config
+├── scripts/                # SSH key setup, autossh, build
+└── vps/                    # sshd_config + install.sh
 ```
 
 ---
@@ -302,7 +302,6 @@ python -m pytest tests -q
 
 ## Licencia
 
-MIT â€” ver [LICENSE](LICENSE) y los repos base:
-[WSL Manager](https://github.com/gilmanpro/wsl-manager-gui) Â·
+MIT — ver [LICENSE](LICENSE) y los repos base:
+[WSL Manager](https://github.com/gilmanpro/wsl-manager-gui) ·
 [Port Forwarder](https://github.com/gilmanpro/port-forwarder-app)
-
