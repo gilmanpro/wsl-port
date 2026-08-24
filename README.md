@@ -4,6 +4,8 @@
 [![Integracion](https://img.shields.io/badge/Integra-WSL%20Manager%20%2B%20Port%20Forwarding-2ea44f)](#caracteristicas-integradas)
 [![Plataforma](https://img.shields.io/badge/Plataforma-Windows%2010%2F11-0078D6?logo=windows&logoColor=white)](#requisitos)
 [![Licencia](https://img.shields.io/badge/Licencia-MIT-blue.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/Tests-7%2F7%20passed-2ea44f)](#tests)
+[![Open Source](https://img.shields.io/badge/Open%20Source-Yes-2ea44f)](LICENSE)
 
 > **Publica cualquier servicio de tu WSL en Internet con 1 clic.** wsl-port une **WSL Manager** (tus distros) y **Port Forwarding Manager** (tuneles al VPS) en una sola ventana y un solo comando.
 
@@ -307,6 +309,17 @@ pip install -e ".[dev]"
 ```bash
 python -m pytest tests -q
 ```
+
+---
+
+## Contribuir
+
+Las contribuciones son bienvenidas! Por favor lee [CONTRIBUTING.md](CONTRIBUTING.md) para mas informacion.
+
+1. Haz un fork del repositorio
+2. Crea una rama para tu feature o fix
+3. Haz tus cambios y asegurate de que los tests pasan
+4. Envia un pull request
 
 ---
 
