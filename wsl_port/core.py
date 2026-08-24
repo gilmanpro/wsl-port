@@ -135,7 +135,17 @@ def distros() -> list[dict]:
                      "default": d.default, "ip": None, "running": d.state == "Running"}
             if entry["running"]:
                 try:
-                    entry["ip"] = wsl.get_ip(d.name)
+                    # Use timeout for IP detection to avoid hanging
+                    import subprocess
+                    proc = subprocess.run(
+                        ["wsl.exe", "-d", d.name, "hostname", "-I"],
+                        capture_output=True, text=True, timeout=10,
+                        creationflags=0x08000000
+                    )
+                    if proc.returncode == 0:
+                        ip = proc.stdout.strip().split()[0] if proc.stdout.strip() else None
+                        if ip and not ip.startswith("169.254"):
+                            entry["ip"] = ip
                 except Exception:
                     pass
             result.append(entry)
@@ -179,7 +189,17 @@ def shutdown_all() -> dict:
 
 def get_ip(name: str) -> str | None:
     try:
-        return wsl_provider().get_ip(name)
+        import subprocess
+        proc = subprocess.run(
+            ["wsl.exe", "-d", name, "hostname", "-I"],
+            capture_output=True, text=True, timeout=10,
+            creationflags=0x08000000
+        )
+        if proc.returncode == 0:
+            ip = proc.stdout.strip().split()[0] if proc.stdout.strip() else None
+            if ip and not ip.startswith("169.254"):
+                return ip
+        return None
     except Exception:
         return None
 
