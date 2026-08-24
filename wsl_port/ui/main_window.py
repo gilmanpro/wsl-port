@@ -1,4 +1,7 @@
-"""Ventana integrada de wsl-port: distros WSL + tunnels/forwards + publicar."""
+"""Ventana integrada de wsl-port: distros WSL + tunnels/forwards + publicar.
+
+Diseno moderno con ttkbootstrap (superhero theme).
+"""
 from __future__ import annotations
 
 import datetime
@@ -14,7 +17,20 @@ import ttkbootstrap as ttk
 from .. import core
 from .publish_tab import PublishTab
 
+# -- Design tokens (inspired by perfil.gilman.pro) ---------------------------
 _FONT = "Segoe UI"
+_COLORS = {
+    "bg": "#0f1419",
+    "card": "#1a2130",
+    "accent": "#00d4ff",
+    "success": "#00c853",
+    "warning": "#ff9100",
+    "danger": "#ff1744",
+    "info": "#2196f3",
+    "muted": "#8b95a5",
+    "text": "#e6edf3",
+    "border": "#2d3748",
+}
 
 _RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 _AUTOSTART_NAME = "wsl-port"
@@ -59,11 +75,16 @@ def _fmt_bytes(n) -> str:
 
 
 def _make_tree(parent, columns: list[str], widths: list[int]) -> _ttk.Treeview:
+    """Create a modern styled Treeview."""
     tv = _ttk.Treeview(parent, columns=columns, show="headings", height=8)
     for col, w in zip(columns, widths):
-        tv.heading(col, text=col)
+        tv.heading(col, text=col, anchor="w")
         tv.column(col, width=w, anchor="w")
-    tv.pack(fill="both", expand=True, padx=6, pady=(0, 6))
+    # Scrollbar
+    sb = _ttk.Scrollbar(parent, orient="vertical", command=tv.yview)
+    tv.configure(yscrollcommand=sb.set)
+    tv.pack(side="left", fill="both", expand=True, padx=(6, 0), pady=(0, 6))
+    sb.pack(side="right", fill="y", pady=(0, 6))
     return tv
 
 
@@ -85,41 +106,44 @@ class _FormDialog(tk.Toplevel):
 
         self._vars: dict[str, tk.Variable] = {}
         for i, (key, label, kind) in enumerate(fields):
-            ttk.Label(frame, text=label + ":").grid(row=i, column=0, sticky="w", pady=4)
+            ttk.Label(frame, text=label + ":", font=(_FONT, 10)).grid(
+                row=i, column=0, sticky="w", pady=6)
             if kind == "entry":
                 var = tk.StringVar()
-                ttk.Entry(frame, textvariable=var, width=30).grid(
-                    row=i, column=1, sticky="w", padx=8, pady=4)
+                ttk.Entry(frame, textvariable=var, width=30, font=(_FONT, 10)).grid(
+                    row=i, column=1, sticky="ew", padx=(12, 0), pady=6)
             elif kind == "password":
                 var = tk.StringVar()
-                ttk.Entry(frame, textvariable=var, width=30, show="*").grid(
-                    row=i, column=1, sticky="w", padx=8, pady=4)
+                ttk.Entry(frame, textvariable=var, width=30, show="*", font=(_FONT, 10)).grid(
+                    row=i, column=1, sticky="ew", padx=(12, 0), pady=6)
             elif kind == "int":
                 var = tk.IntVar(value=0)
-                ttk.Entry(frame, textvariable=var, width=10).grid(
-                    row=i, column=1, sticky="w", padx=8, pady=4)
+                ttk.Entry(frame, textvariable=var, width=10, font=(_FONT, 10)).grid(
+                    row=i, column=1, sticky="w", padx=(12, 0), pady=6)
             elif kind == "combo":
                 var = tk.StringVar()
-                ttk.Combobox(frame, textvariable=var, width=27, state="readonly").grid(
-                    row=i, column=1, sticky="w", padx=8, pady=4)
+                ttk.Combobox(frame, textvariable=var, width=27, state="readonly",
+                             font=(_FONT, 10)).grid(row=i, column=1, sticky="ew", padx=(12, 0), pady=6)
             elif kind == "file":
                 var = tk.StringVar()
                 f = ttk.Frame(frame)
-                f.grid(row=i, column=1, sticky="w", padx=8, pady=4)
-                ttk.Entry(f, textvariable=var, width=22).pack(side="left")
-                ttk.Button(f, text="...", width=3,
-                           command=lambda v=var: self._browse(v)).pack(side="left", padx=2)
+                f.grid(row=i, column=1, sticky="ew", padx=(12, 0), pady=6)
+                ttk.Entry(f, textvariable=var, width=22, font=(_FONT, 10)).pack(side="left", fill="x", expand=True)
+                ttk.Button(f, text="...", width=3, bootstyle="outline",
+                           command=lambda v=var: self._browse(v)).pack(side="left", padx=(4, 0))
             else:
                 var = tk.StringVar()
-                ttk.Entry(frame, textvariable=var, width=30).grid(
-                    row=i, column=1, sticky="w", padx=8, pady=4)
+                ttk.Entry(frame, textvariable=var, width=30, font=(_FONT, 10)).grid(
+                    row=i, column=1, sticky="ew", padx=(12, 0), pady=6)
             self._vars[key] = var
 
+        frame.columnconfigure(1, weight=1)
+
         btns = ttk.Frame(frame)
-        btns.grid(row=len(fields), column=0, columnspan=2, pady=(16, 0))
-        ttk.Button(btns, text="Aceptar", bootstyle="success",
+        btns.grid(row=len(fields), column=0, columnspan=2, pady=(20, 0))
+        ttk.Button(btns, text="Aceptar", bootstyle="success", width=12,
                    command=self._ok).pack(side="left", padx=6)
-        ttk.Button(btns, text="Cancelar", bootstyle="secondary",
+        ttk.Button(btns, text="Cancelar", bootstyle="secondary outline", width=12,
                    command=self.cancel).pack(side="left", padx=6)
 
         self.protocol("WM_DELETE_WINDOW", self.cancel)
@@ -165,7 +189,7 @@ class _FormDialog(tk.Toplevel):
 
 class MainWindow:
     def __init__(self) -> None:
-        self.root = ttk.Window(themename="darkly", title="wsl-port — WSL + Port Forwarding")
+        self.root = ttk.Window(themename="superhero", title="wsl-port — WSL + Port Forwarding")
         self.root.geometry("1200x800")
         self.root.minsize(1000, 650)
         self._q: queue.Queue = queue.Queue()
@@ -180,137 +204,155 @@ class MainWindow:
 
     def _build(self) -> None:
         style = ttk.Style()
-        style.configure("Treeview", rowheight=26, font=(_FONT, 10))
-        style.configure("Treeview.Heading", font=(_FONT, 10, "bold"))
-        style.configure("Header.TLabel", font=(_FONT, 14, "bold"))
-        style.configure("Muted.TLabel", foreground="#8f9aa8")
+        style.configure("Treeview", rowheight=28, font=(_FONT, 10), background=_COLORS["card"],
+                        fieldbackground=_COLORS["card"], foreground=_COLORS["text"])
+        style.configure("Treeview.Heading", font=(_FONT, 10, "bold"), background=_COLORS["bg"],
+                        foreground=_COLORS["accent"])
+        style.map("Treeview", background=[("selected", _COLORS["accent"])],
+                  foreground=[("selected", _COLORS["bg"])])
+        style.configure("Header.TLabel", font=(_FONT, 16, "bold"), foreground=_COLORS["accent"])
+        style.configure("Sub.TLabel", font=(_FONT, 10), foreground=_COLORS["muted"])
+        style.configure("Card.TLabelframe", background=_COLORS["card"], foreground=_COLORS["text"])
+        style.configure("Card.TLabelframe.Label", font=(_FONT, 11, "bold"), foreground=_COLORS["accent"])
 
-        header = ttk.Frame(self.root, padding=(16, 12))
+        # -- Header ---------------------------------------------------------------
+        header = ttk.Frame(self.root, padding=(20, 16))
         header.pack(fill="x")
         ttk.Label(header, text="wsl-port", style="Header.TLabel").pack(side="left")
-        ttk.Label(header, text="WSL Manager + Port Forwarding integrados",
-                  style="Muted.TLabel").pack(side="left", padx=(10, 0))
-        self.header_status = ttk.Label(header, text="", style="Muted.TLabel")
+        ttk.Label(header, text="  WSL + Port Forwarding integrados",
+                  style="Sub.TLabel").pack(side="left")
+        self.header_status = ttk.Label(header, text="", style="Sub.TLabel")
         self.header_status.pack(side="right")
         ttk.Separator(self.root).pack(fill="x")
 
-        nb = ttk.Notebook(self.root, padding=6)
-        nb.pack(fill="both", expand=True, padx=8, pady=(4, 0))
+        # -- Notebook -------------------------------------------------------------
+        nb = ttk.Notebook(self.root, padding=8)
+        nb.pack(fill="both", expand=True, padx=12, pady=(8, 0))
 
-        # -- pestana Distros WSL -------------------------------------------------
-        d_tab = ttk.Frame(nb)
+        # -- Distros WSL ----------------------------------------------------------
+        d_tab = ttk.Frame(nb, padding=8)
         nb.add(d_tab, text="  Distros WSL  ")
-        d_bar = ttk.Frame(d_tab)
-        d_bar.pack(fill="x", padx=6, pady=6)
-        ttk.Button(d_bar, text="Refrescar", bootstyle="success",
-                   command=self._refresh).pack(side="left", padx=2)
-        ttk.Button(d_bar, text="Iniciar distro", bootstyle="info",
-                   command=self._start_selected_distro).pack(side="left", padx=2)
-        ttk.Button(d_bar, text="Detener distro", bootstyle="warning",
-                   command=self._stop_selected_distro).pack(side="left", padx=2)
-        ttk.Button(d_bar, text="Reiniciar distro", bootstyle="info",
-                   command=self._restart_selected_distro).pack(side="left", padx=2)
-        ttk.Button(d_bar, text="Iniciar todas", bootstyle="info",
-                   command=self._start_all_distros).pack(side="left", padx=2)
-        ttk.Button(d_bar, text="Apagar todas", bootstyle="danger",
-                   command=self._shutdown_all_distros).pack(side="left", padx=2)
-        ttk.Button(d_bar, text="Snapshot", bootstyle="secondary",
-                   command=self._snapshot_selected).pack(side="left", padx=2)
-        ttk.Button(d_bar, text="Metricas", bootstyle="secondary",
-                   command=self._show_metrics).pack(side="left", padx=2)
-        ttk.Button(d_bar, text="Crear distro...", bootstyle="success",
-                   command=self._create_distro_dialog).pack(side="left", padx=2)
-        ttk.Button(d_bar, text="Eliminar distro", bootstyle="danger",
-                   command=self._delete_selected_distro).pack(side="left", padx=2)
-        ttk.Button(d_bar, text="Exportar...", bootstyle="secondary",
-                   command=self._export_selected_distro).pack(side="left", padx=2)
-        ttk.Button(d_bar, text="Importar...", bootstyle="secondary",
-                   command=self._import_distro_dialog).pack(side="left", padx=2)
-        self.distro_tree = _make_tree(d_tab, ["Distro", "Estado", "IP", "Version"],
-                                      [200, 100, 160, 80])
+        self._build_distros_tab(d_tab)
 
-        # -- pestana Publicar ----------------------------------------------------
+        # -- Publicar -------------------------------------------------------------
         self.publish_tab = PublishTab(nb)
         nb.add(self.publish_tab, text="  Publicar en Internet  ")
 
-        # -- pestana Tunnels / VPS -----------------------------------------------
-        t_tab = ttk.Frame(nb)
+        # -- Tunnels / VPS --------------------------------------------------------
+        t_tab = ttk.Frame(nb, padding=8)
         nb.add(t_tab, text="  Tunnels / VPS  ")
+        self._build_tunnels_tab(t_tab)
 
-        # Tunnels section
-        ttk.Label(t_tab, text="Tunnels SSH", style="Header.TLabel").pack(anchor="w", padx=6, pady=(6, 2))
-        tun_bar = ttk.Frame(t_tab)
-        tun_bar.pack(fill="x", padx=6, pady=4)
-        ttk.Button(tun_bar, text="Refrescar", bootstyle="success",
-                   command=self._refresh).pack(side="left", padx=2)
-        ttk.Button(tun_bar, text="Nuevo Tunnel...", bootstyle="info",
-                   command=self._add_tunnel_dialog).pack(side="left", padx=2)
-        ttk.Button(tun_bar, text="Iniciar tunnel", bootstyle="success",
-                   command=self._start_selected_tunnel).pack(side="left", padx=2)
-        ttk.Button(tun_bar, text="Detener tunnel", bootstyle="warning",
-                   command=self._stop_selected_tunnel).pack(side="left", padx=2)
-        ttk.Button(tun_bar, text="Eliminar tunnel", bootstyle="danger",
-                   command=self._remove_selected_tunnel).pack(side="left", padx=2)
-        self.tun_tree = _make_tree(t_tab, ["ID", "Tipo", "VPS", "Local", "Remoto", "Estado", "Trafico"],
-                                   [150, 70, 130, 140, 170, 80, 200])
-
-        ttk.Separator(t_tab).pack(fill="x", padx=6, pady=6)
-
-        # VPS section
-        ttk.Label(t_tab, text="Servidores VPS", style="Header.TLabel").pack(anchor="w", padx=6, pady=(2, 2))
-        vps_bar = ttk.Frame(t_tab)
-        vps_bar.pack(fill="x", padx=6, pady=4)
-        ttk.Button(vps_bar, text="Nuevo VPS...", bootstyle="info",
-                   command=self._add_vps_dialog).pack(side="left", padx=2)
-        ttk.Button(vps_bar, text="Editar VPS...", bootstyle="secondary",
-                   command=self._edit_vps_selected).pack(side="left", padx=2)
-        ttk.Button(vps_bar, text="Eliminar VPS", bootstyle="danger",
-                   command=self._remove_vps_selected).pack(side="left", padx=2)
-        self.vps_tree = _make_tree(t_tab, ["VPS", "Host", "Usuario", "Puerto", "Auth"],
-                                   [150, 220, 130, 80, 120])
-
-        # -- pestana Forwards ----------------------------------------------------
-        f_tab = ttk.Frame(nb)
+        # -- Forwards -------------------------------------------------------------
+        f_tab = ttk.Frame(nb, padding=8)
         nb.add(f_tab, text="  Forwards  ")
-        fwd_bar = ttk.Frame(f_tab)
-        fwd_bar.pack(fill="x", padx=6, pady=6)
-        ttk.Button(fwd_bar, text="Refrescar", bootstyle="success",
-                   command=self._refresh).pack(side="left", padx=2)
-        ttk.Button(fwd_bar, text="Nuevo Forward...", bootstyle="info",
-                   command=self._add_forward_dialog).pack(side="left", padx=2)
-        ttk.Button(fwd_bar, text="Reaplicar todos", bootstyle="info",
-                   command=self._apply_forwards).pack(side="left", padx=2)
-        ttk.Button(fwd_bar, text="Eliminar forward", bootstyle="danger",
-                   command=self._remove_selected_forward).pack(side="left", padx=2)
-        ttk.Button(fwd_bar, text="Limpiar todos", bootstyle="danger",
-                   command=self._clear_forwards).pack(side="left", padx=2)
-        self.fwd_tree = _make_tree(f_tab, ["ID", "Listen", "Distro", "WSL Port", "Proto", "Estado"],
-                                   [160, 90, 160, 90, 70, 100])
+        self._build_forwards_tab(f_tab)
 
-        # -- pestana Logs --------------------------------------------------------
-        l_tab = ttk.Frame(nb)
+        # -- Logs -----------------------------------------------------------------
+        l_tab = ttk.Frame(nb, padding=8)
         nb.add(l_tab, text="  Logs  ")
-        self.log_text = tk.Text(l_tab, font=("Consolas", 9), bg="#17191d", fg="#c9d1d9",
-                                state="disabled", wrap="word")
-        self.log_text.pack(fill="both", expand=True, padx=6, pady=6)
-        ttk.Button(l_tab, text="Refrescar logs", bootstyle="success",
-                   command=self._refresh_logs).pack(anchor="w", padx=6, pady=(0, 6))
+        self._build_logs_tab(l_tab)
 
-        # -- pestana Ajustes -----------------------------------------------------
-        settings_tab = ttk.Frame(nb)
-        nb.add(settings_tab, text="  Ajustes  ")
-        self._build_settings_tab(settings_tab)
+        # -- Ajustes --------------------------------------------------------------
+        s_tab = ttk.Frame(nb, padding=8)
+        nb.add(s_tab, text="  Ajustes  ")
+        self._build_settings_tab(s_tab)
 
-        # -- barra inferior ------------------------------------------------------
+        # -- Status bar -----------------------------------------------------------
         ttk.Separator(self.root).pack(fill="x")
-        bar = ttk.Frame(self.root, padding=(16, 6))
+        bar = ttk.Frame(self.root, padding=(20, 8))
         bar.pack(fill="x", side="bottom")
         self.status_var = tk.StringVar(value="cargando...")
-        ttk.Label(bar, textvariable=self.status_var, style="Muted.TLabel").pack(side="left")
+        ttk.Label(bar, textvariable=self.status_var, style="Sub.TLabel").pack(side="left")
+
+    # -- Distros tab ------------------------------------------------------------
+
+    def _build_distros_tab(self, parent) -> None:
+        bar = ttk.Frame(parent)
+        bar.pack(fill="x", pady=(0, 8))
+        for text, style, cmd in [
+            ("Refrescar", "success", self._refresh),
+            ("Iniciar", "info", self._start_selected_distro),
+            ("Detener", "warning", self._stop_selected_distro),
+            ("Reiniciar", "info", self._restart_selected_distro),
+            ("Iniciar todas", "info outline", self._start_all_distros),
+            ("Apagar todas", "danger outline", self._shutdown_all_distros),
+            ("Snapshot", "secondary", self._snapshot_selected),
+            ("Metricas", "secondary", self._show_metrics),
+            ("Crear...", "success outline", self._create_distro_dialog),
+            ("Eliminar", "danger outline", self._delete_selected_distro),
+            ("Exportar...", "secondary outline", self._export_selected_distro),
+            ("Importar...", "secondary outline", self._import_distro_dialog),
+        ]:
+            ttk.Button(bar, text=text, bootstyle=style, command=cmd).pack(side="left", padx=2)
+        self.distro_tree = _make_tree(parent, ["Distro", "Estado", "IP", "Version"],
+                                      [200, 100, 160, 80])
+
+    # -- Tunnels tab ------------------------------------------------------------
+
+    def _build_tunnels_tab(self, parent) -> None:
+        # Tunnels section
+        ttk.Label(parent, text="Tunnels SSH", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
+        tun_bar = ttk.Frame(parent)
+        tun_bar.pack(fill="x", pady=(0, 8))
+        for text, style, cmd in [
+            ("Refrescar", "success", self._refresh),
+            ("Nuevo Tunnel...", "info", self._add_tunnel_dialog),
+            ("Iniciar", "success outline", self._start_selected_tunnel),
+            ("Detener", "warning outline", self._stop_selected_tunnel),
+            ("Eliminar", "danger outline", self._remove_selected_tunnel),
+        ]:
+            ttk.Button(tun_bar, text=text, bootstyle=style, command=cmd).pack(side="left", padx=2)
+        self.tun_tree = _make_tree(parent, ["ID", "Tipo", "VPS", "Local", "Remoto", "Estado", "Trafico"],
+                                   [150, 70, 130, 140, 170, 80, 200])
+
+        ttk.Separator(parent).pack(fill="x", pady=8)
+
+        # VPS section
+        ttk.Label(parent, text="Servidores VPS", style="Header.TLabel").pack(anchor="w", pady=(0, 4))
+        vps_bar = ttk.Frame(parent)
+        vps_bar.pack(fill="x", pady=(0, 8))
+        for text, style, cmd in [
+            ("Nuevo VPS...", "info", self._add_vps_dialog),
+            ("Editar VPS...", "secondary outline", self._edit_vps_selected),
+            ("Eliminar VPS", "danger outline", self._remove_vps_selected),
+        ]:
+            ttk.Button(vps_bar, text=text, bootstyle=style, command=cmd).pack(side="left", padx=2)
+        self.vps_tree = _make_tree(parent, ["VPS", "Host", "Usuario", "Puerto", "Auth"],
+                                   [150, 220, 130, 80, 120])
+
+    # -- Forwards tab -----------------------------------------------------------
+
+    def _build_forwards_tab(self, parent) -> None:
+        bar = ttk.Frame(parent)
+        bar.pack(fill="x", pady=(0, 8))
+        for text, style, cmd in [
+            ("Refrescar", "success", self._refresh),
+            ("Nuevo Forward...", "info", self._add_forward_dialog),
+            ("Reaplicar todos", "info outline", self._apply_forwards),
+            ("Eliminar", "danger outline", self._remove_selected_forward),
+            ("Limpiar todos", "danger outline", self._clear_forwards),
+        ]:
+            ttk.Button(bar, text=text, bootstyle=style, command=cmd).pack(side="left", padx=2)
+        self.fwd_tree = _make_tree(parent, ["ID", "Listen", "Distro", "WSL Port", "Proto", "Estado"],
+                                   [160, 90, 160, 90, 70, 100])
+
+    # -- Logs tab ---------------------------------------------------------------
+
+    def _build_logs_tab(self, parent) -> None:
+        bar = ttk.Frame(parent)
+        bar.pack(fill="x", pady=(0, 8))
+        ttk.Button(bar, text="Refrescar logs", bootstyle="success",
+                   command=self._refresh_logs).pack(side="left", padx=2)
+        self.log_text = tk.Text(parent, font=("Consolas", 9), bg=_COLORS["card"],
+                                fg=_COLORS["text"], state="disabled", wrap="word",
+                                insertbackground=_COLORS["accent"])
+        self.log_text.pack(fill="both", expand=True)
+
+    # -- Settings tab -----------------------------------------------------------
 
     def _build_settings_tab(self, parent) -> None:
-        # -- Scrollable container -----------------------------------------------
-        canvas = tk.Canvas(parent, highlightthickness=0, bg="#1a1a2e")
+        canvas = tk.Canvas(parent, highlightthickness=0, bg=_COLORS["bg"])
         scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
         inner = ttk.Frame(canvas)
         inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
@@ -318,88 +360,81 @@ class MainWindow:
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
-        # Resize inner frame width with canvas
         canvas.bind("<Configure>", lambda e: canvas.itemconfig("inner", width=e.width - 4))
 
         PAD = 12
-        COL = 2  # number of columns for compact layout
 
         def _card(parent, title: str, row: int, col: int, colspan: int = 1) -> ttk.LabelFrame:
-            """Create a styled card (LabelFrame) in the grid."""
-            card = ttk.LabelFrame(parent, text=f"  {title}  ", padding=10)
+            card = ttk.LabelFrame(parent, text=f"  {title}  ", padding=12, style="Card.TLabelframe")
             card.grid(row=row, column=col, columnspan=colspan, sticky="nsew",
                       padx=PAD // 2, pady=PAD // 2)
             parent.columnconfigure(col, weight=1)
             return card
 
         def _row(parent, r: int, label_text: str, widget_factory, hint: str = "") -> int:
-            """Add a label + widget row inside a card."""
-            ttk.Label(parent, text=label_text).grid(row=r, column=0, sticky="w", pady=2)
+            ttk.Label(parent, text=label_text, font=(_FONT, 10)).grid(
+                row=r, column=0, sticky="w", pady=4)
             w = widget_factory(parent)
-            w.grid(row=r, column=1, sticky="ew", padx=(8, 0), pady=2)
+            w.grid(row=r, column=1, sticky="ew", padx=(12, 0), pady=4)
             parent.columnconfigure(1, weight=1)
             if hint:
-                ttk.Label(parent, text=hint, style="Muted.TLabel", wraplength=280).grid(
+                ttk.Label(parent, text=hint, style="Sub.TLabel", wraplength=280).grid(
                     row=r + 1, column=0, columnspan=2, sticky="w", pady=(0, 4))
                 return r + 2
             return r + 1
 
-        # =====================================================================
         # ROW 0: General | Comportamiento
-        # =====================================================================
         card_general = _card(inner, "General", row=0, col=0)
         card_behav = _card(inner, "Comportamiento", row=0, col=1)
 
-        # -- General --
         r = 0
-        self.theme_var = tk.StringVar(value="darkly")
+        self.theme_var = tk.StringVar(value="superhero")
         r = _row(card_general, r, "Tema:", lambda p: ttk.Combobox(
             p, textvariable=self.theme_var, values=[
-                "darkly", "superhero", "cyborg", "cosmo", "flatly", "journal",
+                "superhero", "darkly", "cyborg", "cosmo", "flatly", "journal",
                 "litera", "lumen", "minty", "pulse", "sandstone", "united", "yeti",
             ], width=14, state="readonly"))
-
         self.sup_interval_var = tk.StringVar(value="10")
         r = _row(card_general, r, "Intervalo supervisor (seg):",
                  lambda p: ttk.Entry(p, textvariable=self.sup_interval_var, width=6))
-
         self.metrics_retention_var = tk.StringVar(value="30")
         r = _row(card_general, r, "Retencion metricas (dias):",
                  lambda p: ttk.Entry(p, textvariable=self.metrics_retention_var, width=6))
 
-        # -- Comportamiento --
         r = 0
         self.min_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(card_behav, text="Iniciar en segundo plano (solo bandeja)",
-                        variable=self.min_var).grid(row=r, column=0, columnspan=2, sticky="w", pady=2)
+                        variable=self.min_var, bootstyle="round-toggle").grid(
+            row=r, column=0, columnspan=2, sticky="w", pady=4)
         r += 1
         self.tray_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(card_behav, text="Cerrar ventana = minimizar a bandeja",
-                        variable=self.tray_var).grid(row=r, column=0, columnspan=2, sticky="w", pady=2)
+                        variable=self.tray_var, bootstyle="round-toggle").grid(
+            row=r, column=0, columnspan=2, sticky="w", pady=4)
         r += 1
         self.stop_distros_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(card_behav, text="Al salir: detener todas las distros WSL",
-                        variable=self.stop_distros_var).grid(row=r, column=0, columnspan=2, sticky="w", pady=2)
+                        variable=self.stop_distros_var, bootstyle="round-toggle").grid(
+            row=r, column=0, columnspan=2, sticky="w", pady=4)
         r += 1
         self.keep_tunnels_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(card_behav, text="Al salir: mantener tunnels SSH activos",
-                        variable=self.keep_tunnels_var).grid(row=r, column=0, columnspan=2, sticky="w", pady=2)
+                        variable=self.keep_tunnels_var, bootstyle="round-toggle").grid(
+            row=r, column=0, columnspan=2, sticky="w", pady=4)
         r += 1
         self.auto_start_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(card_behav, text="Autoarranque con Windows (bandeja)",
-                        variable=self.auto_start_var).grid(row=r, column=0, columnspan=2, sticky="w", pady=2)
+                        variable=self.auto_start_var, bootstyle="round-toggle").grid(
+            row=r, column=0, columnspan=2, sticky="w", pady=4)
 
-        # =====================================================================
         # ROW 1: Panel Web | API REST
-        # =====================================================================
         card_web = _card(inner, "Panel Web", row=1, col=0)
         card_api = _card(inner, "API REST", row=1, col=1)
 
-        # -- Panel Web --
         r = 0
         self.web_enabled_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(card_web, text="Habilitado", variable=self.web_enabled_var).grid(
-            row=r, column=0, columnspan=2, sticky="w", pady=2)
+        ttk.Checkbutton(card_web, text="Habilitado", variable=self.web_enabled_var,
+                        bootstyle="round-toggle").grid(row=r, column=0, columnspan=2, sticky="w", pady=4)
         r += 1
         self.web_port_var = tk.StringVar(value="8780")
         r = _row(card_web, r, "Puerto:", lambda p: ttk.Entry(p, textvariable=self.web_port_var, width=6))
@@ -409,11 +444,10 @@ class MainWindow:
         r = _row(card_web, r, "Clave:", lambda p: ttk.Entry(p, textvariable=self.web_pw_var, width=20, show="*"),
                  "Obligatoria. Se guarda cifrada (DPAPI).")
 
-        # -- API REST --
         r = 0
         self.api_enabled_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(card_api, text="Habilitada (loopback)", variable=self.api_enabled_var).grid(
-            row=r, column=0, columnspan=2, sticky="w", pady=2)
+        ttk.Checkbutton(card_api, text="Habilitada (loopback)", variable=self.api_enabled_var,
+                        bootstyle="round-toggle").grid(row=r, column=0, columnspan=2, sticky="w", pady=4)
         r += 1
         self.api_port_var = tk.StringVar(value="8781")
         r = _row(card_api, r, "Puerto:", lambda p: ttk.Entry(p, textvariable=self.api_port_var, width=6))
@@ -423,20 +457,17 @@ class MainWindow:
             state="readonly", width=8))
         ttk.Button(card_api, text="Generar token API", bootstyle="info",
                    command=self._gen_api_token).grid(row=r, column=0, columnspan=2, sticky="ew", pady=(8, 2))
-        ttk.Label(card_api, text="Se muestra UNA sola vez.", style="Muted.TLabel").grid(
+        ttk.Label(card_api, text="Se muestra UNA sola vez.", style="Sub.TLabel").grid(
             row=r + 1, column=0, columnspan=2, sticky="w")
 
-        # =====================================================================
-        # ROW 2: MCP | Rutas de binarios
-        # =====================================================================
+        # ROW 2: MCP | Rutas
         card_mcp = _card(inner, "MCP (agentes LLM)", row=2, col=0)
         card_paths = _card(inner, "Rutas de binarios", row=2, col=1)
 
-        # -- MCP --
         r = 0
         self.mcp_enabled_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(card_mcp, text="Habilitado", variable=self.mcp_enabled_var).grid(
-            row=r, column=0, columnspan=2, sticky="w", pady=2)
+        ttk.Checkbutton(card_mcp, text="Habilitado", variable=self.mcp_enabled_var,
+                        bootstyle="round-toggle").grid(row=r, column=0, columnspan=2, sticky="w", pady=4)
         r += 1
         self.mcp_transport_var = tk.StringVar(value="stdio")
         r = _row(card_mcp, r, "Transporte:", lambda p: ttk.Combobox(
@@ -445,14 +476,13 @@ class MainWindow:
         self.mcp_port_var = tk.StringVar(value="8782")
         r = _row(card_mcp, r, "Puerto (http):", lambda p: ttk.Entry(p, textvariable=self.mcp_port_var, width=6))
         self.mcp_token_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(card_mcp, text="Exigir token", variable=self.mcp_token_var).grid(
-            row=r, column=0, columnspan=2, sticky="w", pady=2)
+        ttk.Checkbutton(card_mcp, text="Exigir token", variable=self.mcp_token_var,
+                        bootstyle="round-toggle").grid(row=r, column=0, columnspan=2, sticky="w", pady=4)
         r += 1
         self.mcp_key_var = tk.StringVar()
         r = _row(card_mcp, r, "Token:", lambda p: ttk.Entry(p, textvariable=self.mcp_key_var, width=20, show="*"),
                  "Si vacio, se genera uno aleatorio al guardar.")
 
-        # -- Rutas --
         r = 0
         self.wsl_exe_var = tk.StringVar(value="")
         r = _row(card_paths, r, "wsl.exe:", lambda p: ttk.Entry(p, textvariable=self.wsl_exe_var, width=28))
@@ -460,28 +490,24 @@ class MainWindow:
         r = _row(card_paths, r, "ssh.exe:", lambda p: ttk.Entry(p, textvariable=self.ssh_exe_var, width=28))
         self.netsh_exe_var = tk.StringVar(value="")
         r = _row(card_paths, r, "netsh.exe:", lambda p: ttk.Entry(p, textvariable=self.netsh_exe_var, width=28))
-        ttk.Label(card_paths, text="Dejar vacio para autodetectar.", style="Muted.TLabel").grid(
+        ttk.Label(card_paths, text="Dejar vacio para autodetectar.", style="Sub.TLabel").grid(
             row=r, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
-        # =====================================================================
-        # ROW 3: Guardar
-        # =====================================================================
+        # Save button
         btn_frame = ttk.Frame(inner)
-        btn_frame.grid(row=3, column=0, columnspan=2, pady=(8, 16))
+        btn_frame.grid(row=3, column=0, columnspan=2, pady=(12, 16))
         ttk.Button(btn_frame, text="  Guardar ajustes  ", bootstyle="success",
                    command=self._save_settings).pack(side="left", padx=6)
-        ttk.Button(btn_frame, text="  Restaurar valores  ", bootstyle="secondary",
+        ttk.Button(btn_frame, text="  Restaurar valores  ", bootstyle="secondary outline",
                    command=self._load_settings_values).pack(side="left", padx=6)
 
-        # Load current values
         self._load_settings_values()
 
     def _load_settings_values(self) -> None:
-        """Cargar valores actuales de config en los widgets."""
         try:
             store = core.pf_store()
             cfg = store.cfg
-            self.theme_var.set(cfg.ui.theme if cfg.ui.theme != "dark" else "darkly")
+            self.theme_var.set(cfg.ui.theme if cfg.ui.theme != "dark" else "superhero")
             self.tray_var.set(cfg.ui.close_to_tray)
             self.keep_tunnels_var.set(cfg.on_close.keep_tunnels_alive)
             self.sup_interval_var.set(str(cfg.ui.supervisor_interval_seconds))
@@ -502,17 +528,14 @@ class MainWindow:
             pass
 
     def _gen_api_token(self) -> None:
-        """Generar token para la API REST."""
         import hashlib
         import secrets as _sec
         from tkinter import messagebox
-
         token = _sec.token_urlsafe(32)
         scope = self.api_scope_var.get()
         try:
             from wsl_port.vendor.port_forwarder.utils.secrets import SecretsStore
             store_s = SecretsStore()
-            # Store token hash
             import json
             tokens = {}
             if store_s.check("api_tokens"):
@@ -521,38 +544,27 @@ class MainWindow:
                 except Exception:
                     tokens = {}
             token_id = f"token-{_sec.token_hex(4)}"
-            tokens[token_id] = {
-                "hash": hashlib.sha256(token.encode()).hexdigest(),
-                "scope": scope,
-            }
+            tokens[token_id] = {"hash": hashlib.sha256(token.encode()).hexdigest(), "scope": scope}
             store_s.set("api_tokens", json.dumps(tokens))
         except Exception as e:
             messagebox.showerror("API", f"No se pudo guardar el token: {e}")
             return
-        messagebox.showinfo(
-            "API REST",
-            f"Token API generado (scope {scope}).\n\n{token}\n\n"
-            "Guardalo: NO se volvera a mostrar.\n"
-            f"Uso: Authorization: Bearer {token}",
-        )
+        messagebox.showinfo("API REST",
+                            f"Token API generado (scope {scope}).\n\n{token}\n\n"
+                            "Guardalo: NO se volvera a mostrar.\n"
+                            f"Uso: Authorization: Bearer {token}")
 
     def _save_settings(self) -> None:
         from tkinter import messagebox
         try:
             store = core.pf_store()
             cfg = store.cfg
-
-            # General
             cfg.ui.theme = self.theme_var.get()
             cfg.ui.close_to_tray = self.tray_var.get()
             cfg.on_close.keep_tunnels_alive = self.keep_tunnels_var.get()
             cfg.on_close.stop_distros = self.stop_distros_var.get()
-
-            # Supervisor
             cfg.ui.supervisor_interval_seconds = int(self.sup_interval_var.get() or 10)
             cfg.ui.metrics_retention_days = int(self.metrics_retention_var.get() or 30)
-
-            # Panel web
             web_on = self.web_enabled_var.get()
             web_pw = self.web_pw_var.get()
             if web_on and not web_pw:
@@ -566,12 +578,8 @@ class MainWindow:
             if web_pw:
                 from wsl_port.vendor.port_forwarder.utils.secrets import SecretsStore
                 SecretsStore().set("web_panel_token", web_pw)
-
-            # API REST
             cfg.api.enabled = self.api_enabled_var.get()
             cfg.api.port = int(self.api_port_var.get() or 8781)
-
-            # MCP
             mcp_on = self.mcp_enabled_var.get()
             mcp_token = self.mcp_key_var.get()
             if mcp_on and self.mcp_token_var.get() and not mcp_token:
@@ -583,20 +591,14 @@ class MainWindow:
             cfg.mcp.token_required = self.mcp_token_var.get()
             if mcp_token:
                 cfg.mcp.token = mcp_token
-
-            # Rutas de binarios
             if self.wsl_exe_var.get().strip():
                 cfg.windows.wsl_exe = self.wsl_exe_var.get().strip()
             if self.ssh_exe_var.get().strip():
                 cfg.windows.ssh_exe = self.ssh_exe_var.get().strip()
             if self.netsh_exe_var.get().strip():
                 cfg.windows.netsh_exe = self.netsh_exe_var.get().strip()
-
-            # Autoarranque con Windows
             _set_autostart(self.auto_start_var.get())
-
             store.save()
-
             msg = "Ajustes guardados.\nEl tema se aplica al reiniciar."
             if mcp_on and self.mcp_token_var.get() and not self.mcp_key_var.get():
                 msg += f"\n\nToken MCP generado: {mcp_token}"
@@ -689,47 +691,34 @@ class MainWindow:
         messagebox.showinfo("Metricas", msg)
 
     def _create_distro_dialog(self) -> None:
-        """Dialogo para crear una nueva distro WSL."""
         from tkinter import messagebox
-
-        # Get available distros
         available = core.list_available_distros()
         if not available:
             available = ["Ubuntu", "Debian", "kali-linux", "openSUSE-42",
                          "Ubuntu-20.04", "Ubuntu-22.04", "Ubuntu-24.04"]
-
         def _validate(data):
             if not data.get("name", "").strip():
                 raise ValueError("Selecciona una distro")
-
-        fields = [
-            ("name", "Distro a instalar", "combo"),
-        ]
+        fields = [("name", "Distro a instalar", "combo")]
         dlg = _FormDialog(self.root, "Crear nueva distro WSL", fields,
                           validate=_validate, size=(350, 180))
         dlg.set_combo_values("name", available)
-
         self.root.wait_window(dlg)
         if not dlg.result:
             return
-
         distro_name = dlg.result["name"].strip()
-
         def _work():
             messagebox.showinfo("Crear distro",
                                 f"Instalando '{distro_name}'...\nEsto puede tardar varios minutos.")
             r = core.create_distro(distro_name, no_launch=True)
             if r.get("ok"):
-                messagebox.showinfo("Crear distro",
-                                    f"Distro '{distro_name}' instalada correctamente")
+                messagebox.showinfo("Crear distro", f"Distro '{distro_name}' instalada correctamente")
             else:
                 messagebox.showerror("Crear distro", f"Error: {r.get('error')}")
             self._q.put({"_action": "refresh"})
-
         threading.Thread(target=_work, daemon=True).start()
 
     def _delete_selected_distro(self) -> None:
-        """Eliminar la distro WSL seleccionada."""
         name = self._get_selected_distro()
         if not name:
             return
@@ -738,7 +727,6 @@ class MainWindow:
                                    f"ATENCION: Esto eliminara la distro '{name}' y TODOS sus datos.\n\n"
                                    "¿Continuar?"):
             return
-
         def _work():
             r = core.delete_distro(name)
             if r.get("ok"):
@@ -746,24 +734,19 @@ class MainWindow:
             else:
                 messagebox.showerror("Eliminar distro", f"Error: {r.get('error')}")
             self._q.put({"_action": "refresh"})
-
         threading.Thread(target=_work, daemon=True).start()
 
     def _export_selected_distro(self) -> None:
-        """Exportar la distro WSL seleccionada a un archivo .tar."""
         name = self._get_selected_distro()
         if not name:
             return
         from tkinter import messagebox
         target = filedialog.asksaveasfilename(
-            title=f"Exportar distro '{name}'",
-            defaultextension=".tar",
+            title=f"Exportar distro '{name}'", defaultextension=".tar",
             filetypes=[("TAR files", "*.tar"), ("All files", "*.*")],
-            initialfile=f"{name}.tar",
-        )
+            initialfile=f"{name}.tar")
         if not target:
             return
-
         def _work():
             messagebox.showinfo("Exportar", f"Exportando '{name}'...\nEsto puede tardar varios minutos.")
             r = core.export_distro(name, target)
@@ -771,43 +754,34 @@ class MainWindow:
                 messagebox.showinfo("Exportar", f"Distro '{name}' exportada a:\n{target}")
             else:
                 messagebox.showerror("Exportar", f"Error: {r.get('error')}")
-
         threading.Thread(target=_work, daemon=True).start()
 
     def _import_distro_dialog(self) -> None:
-        """Importar una distro WSL desde un archivo .tar."""
         from tkinter import messagebox
         source = filedialog.askopenfilename(
             title="Seleccionar archivo .tar para importar",
-            filetypes=[("TAR files", "*.tar"), ("All files", "*.*")],
-        )
+            filetypes=[("TAR files", "*.tar"), ("All files", "*.*")])
         if not source:
             return
-
         def _validate(data):
             if not data.get("name", "").strip():
                 raise ValueError("El nombre es obligatorio")
             if not data.get("install_dir", "").strip():
                 raise ValueError("El directorio de instalacion es obligatorio")
-
         fields = [
             ("name", "Nombre de la nueva distro", "entry"),
             ("install_dir", "Directorio de instalacion", "entry"),
         ]
         dlg = _FormDialog(self.root, "Importar distro", fields,
                           validate=_validate, size=(400, 200))
-        # Default install dir
         import os
         default_dir = os.path.join(os.environ.get("LOCALAPPDATA", ""), "WSL", "distros")
         dlg._vars["install_dir"].set(default_dir)
-
         self.root.wait_window(dlg)
         if not dlg.result:
             return
-
         distro_name = dlg.result["name"].strip()
         install_dir = dlg.result["install_dir"].strip()
-
         def _work():
             messagebox.showinfo("Importar", f"Importando '{distro_name}'...\nEsto puede tardar varios minutos.")
             r = core.import_distro(source, distro_name, install_dir)
@@ -816,7 +790,6 @@ class MainWindow:
             else:
                 messagebox.showerror("Importar", f"Error: {r.get('error')}")
             self._q.put({"_action": "refresh"})
-
         threading.Thread(target=_work, daemon=True).start()
 
     # -- Tunnel actions -------------------------------------------------------
@@ -830,13 +803,11 @@ class MainWindow:
         return str(self.tun_tree.item(sel[0])["values"][0])
 
     def _add_tunnel_dialog(self) -> None:
-        """Dialogo para agregar tunnel con seleccion facil."""
         vps_list = core.vps_list()
         if not vps_list:
             from tkinter import messagebox
             messagebox.showwarning("Tunnels", "Primero crea un VPS en la seccion Servidores VPS")
             return
-
         def _validate(data):
             if not data.get("id", "").strip():
                 raise ValueError("El ID es obligatorio")
@@ -844,7 +815,6 @@ class MainWindow:
                 raise ValueError("El puerto local es obligatorio")
             if not data.get("remote_port", 0):
                 raise ValueError("El puerto remoto es obligatorio")
-
         fields = [
             ("id", "ID del tunnel", "entry"),
             ("vps_id", "VPS destino", "combo"),
@@ -856,22 +826,18 @@ class MainWindow:
         dlg = _FormDialog(self.root, "Nuevo Tunnel SSH", fields, validate=_validate)
         dlg._vars["local_host"].set("127.0.0.1")
         dlg._vars["remote_host"].set("0.0.0.0")
-        # Set VPS combo values
         vps_ids = [v["id"] for v in vps_list]
         dlg.set_combo_values("vps_id", vps_ids)
-
         self.root.wait_window(dlg)
         if not dlg.result:
             return
         data = dlg.result
         r = core.add_tunnel(
-            tun_id=data["id"].strip(),
-            vps_id=data["vps_id"].strip(),
+            tun_id=data["id"].strip(), vps_id=data["vps_id"].strip(),
             local_host=data.get("local_host", "127.0.0.1").strip() or "127.0.0.1",
             local_port=int(data["local_port"]),
             remote_host=data.get("remote_host", "0.0.0.0").strip() or "0.0.0.0",
-            remote_port=int(data["remote_port"]),
-        )
+            remote_port=int(data["remote_port"]))
         from tkinter import messagebox
         if r.get("ok"):
             messagebox.showinfo("Tunnel", f"Tunnel '{data['id']}' creado")
@@ -920,13 +886,11 @@ class MainWindow:
         return str(self.vps_tree.item(sel[0])["values"][0])
 
     def _add_vps_dialog(self) -> None:
-        """Dialogo para agregar VPS con todos los campos."""
         def _validate(data):
             if not data.get("id", "").strip():
                 raise ValueError("El ID es obligatorio")
             if not data.get("host", "").strip():
                 raise ValueError("El host es obligatorio")
-
         fields = [
             ("id", "ID del VPS", "entry"),
             ("host", "Host / IP", "entry"),
@@ -938,19 +902,15 @@ class MainWindow:
         dlg = _FormDialog(self.root, "Nuevo VPS", fields, validate=_validate, size=(450, 380))
         dlg._vars["user"].set("debian")
         dlg._vars["port"].set(22)
-
         self.root.wait_window(dlg)
         if not dlg.result:
             return
         data = dlg.result
         r = core.add_vps(
-            vps_id=data["id"].strip(),
-            host=data["host"].strip(),
-            user=data.get("user", "").strip(),
-            port=int(data.get("port", 22) or 22),
+            vps_id=data["id"].strip(), host=data["host"].strip(),
+            user=data.get("user", "").strip(), port=int(data.get("port", 22) or 22),
             identity_file=data.get("identity_file", "").strip(),
-            password=data.get("password", "").strip(),
-        )
+            password=data.get("password", "").strip())
         from tkinter import messagebox
         if r.get("ok"):
             messagebox.showinfo("VPS", f"VPS '{data['id']}' creado")
@@ -959,7 +919,6 @@ class MainWindow:
             messagebox.showerror("VPS", f"Error: {r.get('error')}")
 
     def _edit_vps_selected(self) -> None:
-        """Editar VPS existente."""
         vps_id = self._get_selected_vps()
         if not vps_id:
             return
@@ -968,11 +927,9 @@ class MainWindow:
             from tkinter import messagebox
             messagebox.showerror("VPS", f"VPS '{vps_id}' no encontrado")
             return
-
         def _validate(data):
             if not data.get("host", "").strip():
                 raise ValueError("El host es obligatorio")
-
         fields = [
             ("host", "Host / IP", "entry"),
             ("user", "Usuario SSH", "entry"),
@@ -986,21 +943,16 @@ class MainWindow:
         dlg._vars["port"].set(vps.get("port", 22))
         dlg._vars["identity_file"].set(vps.get("identity_file", ""))
         dlg._vars["password"].set(vps.get("password", ""))
-
         self.root.wait_window(dlg)
         if not dlg.result:
             return
         data = dlg.result
-        # Remove old and add new
         core.remove_vps(vps_id)
         r = core.add_vps(
-            vps_id=vps_id,
-            host=data["host"].strip(),
-            user=data.get("user", "").strip(),
-            port=int(data.get("port", 22) or 22),
+            vps_id=vps_id, host=data["host"].strip(),
+            user=data.get("user", "").strip(), port=int(data.get("port", 22) or 22),
             identity_file=data.get("identity_file", "").strip(),
-            password=data.get("password", "").strip(),
-        )
+            password=data.get("password", "").strip())
         from tkinter import messagebox
         if r.get("ok"):
             messagebox.showinfo("VPS", f"VPS '{vps_id}' actualizado")
@@ -1031,10 +983,8 @@ class MainWindow:
         return str(self.fwd_tree.item(sel[0])["values"][0])
 
     def _add_forward_dialog(self) -> None:
-        """Dialogo para agregar forward."""
         distros = core.distros()
         distro_names = [d["name"] for d in distros]
-
         def _validate(data):
             if not data.get("id", "").strip():
                 raise ValueError("El ID es obligatorio")
@@ -1044,7 +994,6 @@ class MainWindow:
                 raise ValueError("El puerto WSL es obligatorio")
             if not data.get("distro", "").strip():
                 raise ValueError("La distro es obligatoria")
-
         fields = [
             ("id", "ID del forward", "entry"),
             ("listen_address", "Direccion listen", "combo"),
@@ -1057,28 +1006,18 @@ class MainWindow:
         dlg.set_combo_values("distro", distro_names)
         dlg.set_combo_values("protocol", ["tcp", "udp"])
         dlg.set_combo_values("listen_address", [
-            "0.0.0.0 (todas)",
-            "127.0.0.1 (loopback 1)",
-            "127.0.0.2 (loopback 2)",
-            "127.0.0.3 (loopback 3)",
-            "127.0.0.4 (loopback 4)",
-        ])
-
+            "0.0.0.0 (todas)", "127.0.0.1 (loopback 1)", "127.0.0.2 (loopback 2)",
+            "127.0.0.3 (loopback 3)", "127.0.0.4 (loopback 4)"])
         self.root.wait_window(dlg)
         if not dlg.result:
             return
         data = dlg.result
-        # Parse listen address
         listen_addr = data.get("listen_address", "0.0.0.0 (todas)")
-        listen_addr = listen_addr.split(" ")[0].strip()  # Extract IP from "0.0.0.0 (todas)"
+        listen_addr = listen_addr.split(" ")[0].strip()
         r = core.add_forward(
-            fwd_id=data["id"].strip(),
-            listen_port=int(data["listen_port"]),
-            wsl_distro=data["distro"].strip(),
-            wsl_port=int(data["wsl_port"]),
-            protocol=data.get("protocol", "tcp") or "tcp",
-            listen_address=listen_addr,
-        )
+            fwd_id=data["id"].strip(), listen_port=int(data["listen_port"]),
+            wsl_distro=data["distro"].strip(), wsl_port=int(data["wsl_port"]),
+            protocol=data.get("protocol", "tcp") or "tcp", listen_address=listen_addr)
         from tkinter import messagebox
         if r.get("ok"):
             messagebox.showinfo("Forward", f"Forward '{data['id']}' creado")
@@ -1174,29 +1113,22 @@ class MainWindow:
             self.header_status.configure(
                 text=f"distros {up}/{len(st['distros'])} · tuneles {tun_ok}/{len(st['tunnels'])}"
                      + (" · MANTENIMIENTO" if st["maintenance"] else ""))
-
             self._fill(self.distro_tree, [
                 [d.get("name", "?"), d.get("state", "?"), d.get("ip") or "-",
-                 str(d.get("version", "?"))]
-                for d in st["distros"]
-            ])
+                 str(d.get("version", "?"))] for d in st["distros"]])
             self._fill(self.tun_tree, [
                 [t.get("id", "?"), t.get("type", "ssh"), t.get("vps_id", "?"),
                  t.get("local", "?"), ", ".join(t.get("remote") or []),
-                 t.get("state", "?"), self._fmt_traffic(t.get("traffic"))]
-                for t in st["tunnels"]
-            ])
+                 t.get("state", "?"), self._fmt_traffic(t.get("traffic"))] for t in st["tunnels"]])
             self._fill(self.vps_tree, [
                 [v.get("id", "?"), v.get("host", "?"), v.get("user", "?"),
                  str(v.get("port", 22)),
                  "key" if v.get("identity_file") else ("pass" if v.get("password") else "-")]
-                for v in st["vps"]
-            ])
+                for v in st["vps"]])
             self._fill(self.fwd_tree, [
                 [f.get("id", "?"), str(f.get("listen_port", "?")), f.get("wsl_distro", "?"),
                  str(f.get("wsl_port", "?")), f.get("protocol", "?"), f.get("state", "?")]
-                for f in st["forwards"]
-            ])
+                for f in st["forwards"]])
             self.publish_tab.refresh_options()
             ts = datetime.datetime.now().strftime("%H:%M:%S")
             self.status_var.set(f"actualizado {ts} · supervisor {'ON' if st['supervisor_running'] else 'OFF'}")
@@ -1226,7 +1158,6 @@ _MUTEX = None
 def _single_instance() -> bool:
     """Evita abrir dos ventanas de wsl-port a la vez."""
     import ctypes
-
     global _MUTEX
     _MUTEX = ctypes.windll.kernel32.CreateMutexW(None, False, "wsl-port-unicidad")
     return ctypes.windll.kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
