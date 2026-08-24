@@ -197,36 +197,6 @@ def cmd_distro_metrics(args) -> int:
     return 0
 
 
-# -- Resources --------------------------------------------------------------
-
-def cmd_limits_get(args) -> int:
-    from . import core
-    limits = core.get_global_limits()
-    if getattr(args, "json", False):
-        _out(limits, True)
-    else:
-        print(f"Memory: {limits.get('memory_gb', 'auto')} GB")
-        print(f"Processors: {limits.get('processors', 'auto')}")
-        print(f"Swap: {limits.get('swap_gb', 'auto')} GB")
-        print(f"Auto reclaim: {limits.get('auto_memory_reclaim', 'auto')}")
-        print(f"Sparse VHD: {limits.get('sparse_vhd', 'auto')}")
-    return 0
-
-
-def cmd_limits_set(args) -> int:
-    from . import core
-    kwargs = {}
-    if args.memory is not None:
-        kwargs["memory_gb"] = args.memory
-    if args.processors is not None:
-        kwargs["processors"] = args.processors
-    if args.swap is not None:
-        kwargs["swap_gb"] = args.swap
-    r = core.set_global_limits(**kwargs)
-    print(r.get("message", r.get("error", "ok")))
-    return 0 if r.get("ok") else 1
-
-
 # -- Autostart --------------------------------------------------------------
 
 def cmd_autostart_list(args) -> int:
@@ -751,17 +721,6 @@ def build_parser() -> argparse.ArgumentParser:
     ddl.set_defaults(fn=cmd_distro_delete)
     dav = d_sub.add_parser("available", help="Listar distros disponibles para instalar")
     dav.set_defaults(fn=cmd_distro_available)
-
-    # limits
-    lm = sub.add_parser("limits", help="Limites de recursos (.wslconfig)")
-    lm_sub = lm.add_subparsers(dest="limits_cmd", required=True)
-    lg = lm_sub.add_parser("get", help="Ver limites")
-    lg.set_defaults(fn=cmd_limits_get)
-    ls = lm_sub.add_parser("set", help="Establecer limites")
-    ls.add_argument("--memory", type=float, help="RAM en GB")
-    ls.add_argument("--processors", type=int, help="Num CPUs")
-    ls.add_argument("--swap", type=float, help="Swap en GB")
-    ls.set_defaults(fn=cmd_limits_set)
 
     # autostart
     au = sub.add_parser("autostart", help="Autoarranque de distros")

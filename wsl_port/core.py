@@ -479,36 +479,6 @@ def run_command(name: str, cmd: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Resources / .wslconfig (W5, R1)
-# ---------------------------------------------------------------------------
-
-def get_global_limits() -> dict:
-    try:
-        from wsl_port.vendor.wsl_manager.providers.resource_provider import ResourceProvider
-        rp = ResourceProvider(store=wsl_store())
-        limits = rp.get_global_limits()
-        return {
-            "memory_gb": limits.memory_gb, "processors": limits.processors,
-            "swap_gb": limits.swap_gb, "auto_memory_reclaim": limits.auto_memory_reclaim,
-            "sparse_vhd": limits.sparse_vhd,
-        }
-    except Exception as e:
-        return {"error": str(e)}
-
-
-def set_global_limits(**kwargs) -> dict:
-    try:
-        from wsl_port.vendor.wsl_manager.providers.resource_provider import ResourceProvider
-        rp = ResourceProvider(store=wsl_store())
-        from wsl_port.vendor.wsl_manager.core.config import GlobalLimits
-        limits = GlobalLimits(**{k: v for k, v in kwargs.items() if v is not None})
-        rp.set_global_limits(limits)
-        return {"ok": True, "message": "Limites guardados (requiere wsl --shutdown)"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-# ---------------------------------------------------------------------------
 # Autostart (W7)
 # ---------------------------------------------------------------------------
 
