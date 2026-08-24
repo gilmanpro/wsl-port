@@ -737,7 +737,7 @@ class MainWindow:
         try:
             # Open Windows Terminal with WSL distro
             subprocess.Popen(
-                ["wt.exe", "-d", name],
+                ["wt.exe", "wsl", "-d", name],
                 creationflags=0x08000000,  # CREATE_NO_WINDOW
             )
         except FileNotFoundError:
