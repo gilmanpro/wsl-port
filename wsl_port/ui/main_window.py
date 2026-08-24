@@ -362,6 +362,21 @@ class MainWindow:
         scrollbar.pack(side="right", fill="y")
         canvas.bind("<Configure>", lambda e: canvas.itemconfig("inner", width=e.width - 4))
 
+        # Mouse wheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def _bind_mousewheel(event):
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+        def _unbind_mousewheel(event):
+            canvas.unbind_all("<MouseWheel>")
+
+        canvas.bind("<Enter>", _bind_mousewheel)
+        canvas.bind("<Leave>", _unbind_mousewheel)
+        inner.bind("<Enter>", _bind_mousewheel)
+        inner.bind("<Leave>", _unbind_mousewheel)
+
         PAD = 12
 
         def _card(parent, title: str, row: int, col: int, colspan: int = 1) -> ttk.LabelFrame:
