@@ -249,21 +249,31 @@ La GUI tiene 6 pestanas:
 ```
 wsl-port/
 ├── run.py                  # Entry point (GUI / headless)
-├── wsl-port.vbs            # Lanzador sin consola
-├── vendor_copy.py          # Genera vendor/ desde repos base
 ├── pyproject.toml          # Configuracion del paquete
+├── README.md               # Este archivo
 ├── wsl_port/
+│   ├── __init__.py
 │   ├── core.py             # Nucleo integrado (providers directos)
 │   ├── cli.py              # CLI completo (20 grupos de comandos)
 │   ├── publish.py          # Flujo publicar/despublicar
 │   ├── ui/
+│   │   ├── __init__.py
 │   │   ├── main_window.py  # GUI (6 pestanas + ajustes)
 │   │   └── publish_tab.py  # Asistente Publicar
 │   └── vendor/             # Auto-generado (wsl_manager + port_forwarder)
-├── tests/                  # pytest (7 tests)
-├── config/                 # Ejemplo de config
-├── scripts/                # SSH key setup, autossh, build
-└── vps/                    # sshd_config + install.sh
+├── tests/
+│   └── test_publish.py     # Tests unitarios (7 tests)
+├── docs/
+│   ├── REPORTE-TESTS-COMPLETO.md
+│   ├── REPORTE-TESTS-WEB-PANEL.md
+│   ├── REPORTE-TESTS-MCP.md
+│   ├── REPORTE-PRUEBAS-EXPORTAR-PUERTOS.md
+│   └── PROYECTOS-GILMANPRO.md
+├── scripts/
+│   ├── vendor_copy.py      # Genera vendor/ desde repos base
+│   ├── wsl-port.spec       # PyInstaller spec
+│   └── wsl-port.vbs        # Lanzador sin consola
+└── .gitignore
 ```
 
 ---
