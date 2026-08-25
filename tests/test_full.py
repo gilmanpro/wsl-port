@@ -534,24 +534,54 @@ def test_gui_distro_stop_queues_refresh(monkeypatch, gui, fake_provider):
     assert calls["notify"]
 
 
-def test_gui_export_opens_browser(monkeypatch, gui):
+def test_gui_export_descarga_directa(monkeypatch, gui):
+    """Exportar usa dialogo guardar + core.export_distro (sin navegador)."""
     from wsl_port.ui.main_window import MainWindow
     monkeypatch.setattr(MainWindow, "_get_selected_distro", lambda self: "Debian")
-    opened = []
-    monkeypatch.setattr("wsl_port.ui.main_window.webbrowser.open", lambda url: opened.append(url))
+    monkeypatch.setattr("wsl_port.ui.main_window.filedialog.asksaveasfilename",
+                        lambda **k: "C:\\tmp\\Debian.tar")
+    exported = []
+    monkeypatch.setattr(core, "export_distro",
+                        lambda name, target: exported.append((name, target)) or {"ok": True})
+    monkeypatch.setattr(MainWindow, "_notify",
+                        lambda self, t, m, level="info": None)
     monkeypatch.setattr("tkinter.messagebox.showinfo", lambda *a, **k: None)
+    monkeypatch.setattr("wsl_port.ui.main_window.webbrowser", mock.MagicMock())
     gui._export_selected_distro()
-    assert opened
-    assert "Debian/export" in opened[0]
+    time.sleep(0.4)
+    assert exported, "debe llamar core.export_distro"
+    assert exported[0] == ("Debian", "C:\\tmp\\Debian.tar")
+    # No debe abrir navegador
+    assert not gui._q.empty()  # encola refresh
 
 
-def test_gui_import_opens_web(monkeypatch, gui):
-    from wsl_port.ui.main_window import MainWindow
-    opened = []
-    monkeypatch.setattr("wsl_port.ui.main_window.webbrowser.open", lambda url: opened.append(url))
+def test_gui_import_usa_dialogo_archivo(monkeypatch, gui):
+    """Importar usa dialogo abrir + formulario + core.import_distro (sin navegador)."""
+    from wsl_port.ui.main_window import MainWindow, _FormDialog
+    monkeypatch.setattr("wsl_port.ui.main_window.filedialog.askopenfilename",
+                        lambda **k: "C:\\tmp\\backup.tar")
+
+    class FakeDlg:
+        def __init__(self):
+            self.result = {"name": "nueva-distro",
+                           "install_dir": "C:\\WSL\\nueva-distro"}
+            self._vars = {"install_dir": mock.MagicMock()}
+
+    monkeypatch.setattr("wsl_port.ui.main_window._FormDialog", lambda *a, **k: FakeDlg())
+    imported = []
+    monkeypatch.setattr(core, "import_distro",
+                        lambda source, name, install_dir: imported.append(
+                            (source, name, install_dir)) or {"ok": True})
+    monkeypatch.setattr(MainWindow, "_notify",
+                        lambda self, t, m, level="info": None)
     monkeypatch.setattr("tkinter.messagebox.showinfo", lambda *a, **k: None)
+    monkeypatch.setattr("wsl_port.ui.main_window.webbrowser", mock.MagicMock())
+    gui.root.wait_window = lambda dlg: None
     gui._import_distro_dialog()
-    assert opened
+    time.sleep(0.4)
+    assert imported, "debe llamar core.import_distro"
+    assert imported[0][0] == "C:\\tmp\\backup.tar"
+    assert imported[0][1] == "nueva-distro"
 
 
 def test_gui_add_forward_dialog(monkeypatch, gui):

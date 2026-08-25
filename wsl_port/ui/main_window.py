@@ -842,31 +842,61 @@ class MainWindow:
         if not name:
             return
         from tkinter import messagebox
-        import webbrowser
-        # Check if web panel is running
-        web_port = int(self.web_port_var.get() or 8780)
-        web_url = f"http://127.0.0.1:{web_port}"
-        # Try to open in browser for download
-        export_url = f"{web_url}/api/v1/distro/{name}/export"
-        messagebox.showinfo("Exportar",
-                           f"Se abrira el navegador para descargar '{name}.tar'\n\n"
-                           f"URL: {export_url}\n\n"
-                           f"Si el panel web no esta habilitado, se usara wsl.exe directamente.")
-        webbrowser.open(export_url)
+        target = filedialog.asksaveasfilename(
+            title=f"Exportar distro '{name}'", defaultextension=".tar",
+            filetypes=[("TAR files", "*.tar"), ("All files", "*.*")],
+            initialfile=f"{name}.tar")
+        if not target:
+            return
+        self._notify("Exportar", f"Exportando {name}...")
+        def _work():
+            r = core.export_distro(name, target)
+            if r.get("ok"):
+                self._notify("Exportar", f"Distro '{name}' exportada a {target}", "success")
+                messagebox.showinfo("Exportar", f"Distro '{name}' exportada a:\n{target}")
+            else:
+                self._notify("Exportar", f"Error: {r.get('error')}", "error")
+                messagebox.showerror("Exportar", f"Error: {r.get('error')}")
+            self._q.put({"_action": "refresh"})
+        threading.Thread(target=_work, daemon=True).start()
 
     def _import_distro_dialog(self) -> None:
         from tkinter import messagebox
-        import webbrowser
-        # Check if web panel is running
-        web_port = int(self.web_port_var.get() or 8780)
-        web_url = f"http://127.0.0.1:{web_port}"
-        # Try to open in browser for upload
-        import_url = f"{web_url}/"
-        messagebox.showinfo("Importar",
-                           f"Se abrira el panel web para importar una distro\n\n"
-                           f"URL: {web_url}\n\n"
-                           f"Use el boton 'Importar' en el panel web.")
-        webbrowser.open(import_url)
+        source = filedialog.askopenfilename(
+            title="Seleccionar archivo .tar para importar",
+            filetypes=[("TAR files", "*.tar"), ("All files", "*.*")])
+        if not source:
+            return
+        def _validate(data):
+            if not data.get("name", "").strip():
+                raise ValueError("El nombre es obligatorio")
+            if not data.get("install_dir", "").strip():
+                raise ValueError("El directorio de instalacion es obligatorio")
+        fields = [
+            ("name", "Nombre de la nueva distro", "entry"),
+            ("install_dir", "Directorio de instalacion", "entry"),
+        ]
+        dlg = _FormDialog(self.root, "Importar distro", fields,
+                          validate=_validate, size=(400, 200))
+        import os
+        default_dir = os.path.join(os.environ.get("LOCALAPPDATA", ""), "WSL", "distros")
+        dlg._vars["install_dir"].set(default_dir)
+        self.root.wait_window(dlg)
+        if not dlg.result:
+            return
+        distro_name = dlg.result["name"].strip()
+        install_dir = dlg.result["install_dir"].strip()
+        self._notify("Importar", f"Importando {distro_name}...")
+        def _work():
+            r = core.import_distro(source, distro_name, install_dir)
+            if r.get("ok"):
+                self._notify("Importar", f"Distro '{distro_name}' importada", "success")
+                messagebox.showinfo("Importar", f"Distro '{distro_name}' importada correctamente")
+            else:
+                self._notify("Importar", f"Error: {r.get('error')}", "error")
+                messagebox.showerror("Importar", f"Error: {r.get('error')}")
+            self._q.put({"_action": "refresh"})
+        threading.Thread(target=_work, daemon=True).start()
 
     # -- Tunnel actions -------------------------------------------------------
 
