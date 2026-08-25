@@ -1119,11 +1119,41 @@ def _parse_size_gb(value: str):
     return num
 
 
+# Opciones soportadas de .wslconfig (seccion [wsl2])
+# campo_interno -> clave en .wslconfig
+_LIMITS_FIELDS: dict[str, str] = {
+    "memory_gb": "memory",
+    "processors": "processors",
+    "swap_gb": "swap",
+    "default_vhd_gb": "defaultVhdSize",
+    "auto_memory_reclaim": "autoMemoryReclaim",
+    "sparse_vhd": "sparseVhd",
+    "localhost_forwarding": "localhostForwarding",
+}
+
+# Valores validos para dropdowns (None = numero libre)
+_LIMITS_CHOICES: dict[str, list[str]] = {
+    "auto_memory_reclaim": ["gradual", "dropcache", "disabled"],
+    "sparse_vhd": ["true", "false"],
+    "localhost_forwarding": ["true", "false"],
+}
+
+
+def _canonical_key(key: str) -> str:
+    """Convierte una clave de .wslconfig a su nombre canonico (case correcto)."""
+    kl = key.strip().lower()
+    for field, cfg_key in _LIMITS_FIELDS.items():
+        if cfg_key.lower() == kl:
+            return cfg_key
+    return key.strip()
+
+
 def get_global_limits() -> dict:
     """Lee los limites de recursos del .wslconfig (seccion [wsl2])."""
     path = wslconfig_path()
-    limits = {"memory_gb": None, "processors": None, "swap_gb": None,
-              "exists": False, "path": str(path)}
+    limits = {k: None for k in _LIMITS_FIELDS}
+    limits["exists"] = False
+    limits["path"] = str(path)
     if not path.exists():
         return limits
     limits["exists"] = True
@@ -1136,28 +1166,35 @@ def get_global_limits() -> dict:
             key, _, value = s.partition("=")
             key = key.strip().lower()
             value = value.strip()
-            if key == "memory":
-                limits["memory_gb"] = _parse_size_gb(value)
-            elif key == "processors":
-                try:
-                    limits["processors"] = int(value)
-                except ValueError:
-                    pass
-            elif key == "swap":
-                limits["swap_gb"] = _parse_size_gb(value)
+            for field, cfg_key in _LIMITS_FIELDS.items():
+                if cfg_key.lower() == key:
+                    limits[field] = _parse_limit_value(field, value)
+                    break
     except Exception:
         pass
     return limits
 
 
-def set_global_limits(memory_gb: float | None = None,
-                      processors: int | None = None,
-                      swap_gb: float | None = None) -> dict:
+def _parse_limit_value(field: str, value: str):
+    if field in ("memory_gb", "swap_gb", "default_vhd_gb"):
+        return _parse_size_gb(value)
+    if field in ("processors",):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return value.strip().lower()
+
+
+def set_global_limits(**kwargs) -> dict:
     """Escribe los limites en .wslconfig (con backup). Preserva otras opciones.
 
-    Nunca escribe networkingMode (evita el modo bridged que colgo WSL).
+    - Acepta las claves de _LIMITS_FIELDS (memory_gb, processors, swap_gb,
+      default_vhd_gb, auto_memory_reclaim, sparse_vhd, localhost_forwarding).
+    - Valida los valores de dropdowns.
+    - Nunca escribe networkingMode (evita el modo bridged que colgo WSL).
+    - None = no tocar esa opcion.
     """
-    import os
     import shutil
     path = wslconfig_path()
     if path.exists():
@@ -1166,7 +1203,19 @@ def set_global_limits(memory_gb: float | None = None,
         except Exception:
             pass
 
+    # Validar campos y valores
+    for k, v in kwargs.items():
+        if v is None:
+            continue
+        if k not in _LIMITS_FIELDS:
+            return {"ok": False, "error": f"opcion desconocida: {k}"}
+        choices = _LIMITS_CHOICES.get(k)
+        if choices is not None and str(v).lower() not in choices:
+            return {"ok": False,
+                    "error": f"'{k}' debe ser uno de: {', '.join(choices)}"}
+
     # Leer opciones [wsl2] existentes para preservar las no gestionadas
+    # (normalizar claves conocidas a su nombre canonico para no duplicar)
     existing: dict[str, str] = {}
     if path.exists():
         try:
@@ -1178,19 +1227,38 @@ def set_global_limits(memory_gb: float | None = None,
                     continue
                 if in_wsl2 and "=" in s and not s.startswith("#"):
                     k, _, v = s.partition("=")
-                    existing[k.strip().lower()] = v.strip()
+                    k = k.strip()
+                    v = v.strip()
+                    canon = _canonical_key(k)
+                    existing[canon] = v
         except Exception:
             pass
 
-    if memory_gb is not None:
-        existing["memory"] = f"{float(memory_gb):g}GB"
-    if processors is not None:
-        existing["processors"] = str(int(processors))
-    if swap_gb is not None:
-        existing["swap"] = f"{float(swap_gb):g}GB"
+    # Aplicar cambios (usar nombre canonico en el .wslconfig)
+    for field, cfg_key in _LIMITS_FIELDS.items():
+        val = kwargs.get(field)
+        if val is None:
+            continue
+        if field in ("memory_gb", "swap_gb", "default_vhd_gb"):
+            existing[cfg_key] = f"{float(val):g}GB"
+        elif field == "processors":
+            existing[cfg_key] = str(int(val))
+        else:
+            existing[cfg_key] = str(val).strip().lower()
+
     # Defaults seguros si no existen
     existing.setdefault("localhostForwarding", "true")
     existing.setdefault("nestedVirtualization", "true")
+
+    # Deduplicar claves (case-insensitive), mantener la ultima
+    final: dict[str, str] = {}
+    for k in list(existing.keys()):
+        kl = k.lower()
+        for fk in list(final.keys()):
+            if fk.lower() == kl:
+                del final[fk]
+        final[k] = existing[k]
+    existing = final
 
     lines = ["[wsl2]"]
     for k, v in existing.items():

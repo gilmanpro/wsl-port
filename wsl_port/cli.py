@@ -224,6 +224,14 @@ def cmd_limits_set(args) -> int:
         kwargs["processors"] = args.processors
     if args.swap is not None:
         kwargs["swap_gb"] = args.swap
+    if args.vhd is not None:
+        kwargs["default_vhd_gb"] = args.vhd
+    if args.reclaim is not None:
+        kwargs["auto_memory_reclaim"] = args.reclaim
+    if args.sparse is not None:
+        kwargs["sparse_vhd"] = args.sparse
+    if args.localhost is not None:
+        kwargs["localhost_forwarding"] = args.localhost
     r = core.set_global_limits(**kwargs)
     print(r.get("message", r.get("error", "ok")))
     return 0 if r.get("ok") else 1
@@ -763,6 +771,12 @@ def build_parser() -> argparse.ArgumentParser:
     ls.add_argument("--memory", type=float, help="RAM en GB")
     ls.add_argument("--processors", type=int, help="Num CPUs")
     ls.add_argument("--swap", type=float, help="Swap en GB")
+    ls.add_argument("--vhd", type=float, help="defaultVhdSize en GB")
+    ls.add_argument("--reclaim", choices=["gradual", "dropcache", "disabled"],
+                    help="autoMemoryReclaim")
+    ls.add_argument("--sparse", choices=["true", "false"], help="sparseVhd")
+    ls.add_argument("--localhost", choices=["true", "false"],
+                    help="localhostForwarding")
     ls.set_defaults(fn=cmd_limits_set)
 
     # autostart

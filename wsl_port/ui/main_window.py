@@ -567,6 +567,21 @@ class MainWindow:
         self.swap_var = tk.StringVar(value="")
         r2 = _row(card_limits, r2, "Swap (GB):", lambda p: ttk.Entry(p, textvariable=self.swap_var, width=8),
                   "Ej: 4. Vacio = dejar como esta.")
+        self.vhd_var = tk.StringVar(value="")
+        r2 = _row(card_limits, r2, "VHD max (GB):", lambda p: ttk.Entry(p, textvariable=self.vhd_var, width=8),
+                  "defaultVhdSize. Tope de disco para distros nuevas.")
+        self.reclaim_var = tk.StringVar(value="")
+        r2 = _row(card_limits, r2, "Reclaim RAM:", lambda p: ttk.Combobox(
+            p, textvariable=self.reclaim_var, values=["", "gradual", "dropcache", "disabled"],
+            state="readonly", width=12), "autoMemoryReclaim: devuelve RAM libre a Windows.")
+        self.sparse_var = tk.StringVar(value="")
+        r2 = _row(card_limits, r2, "Sparse VHD:", lambda p: ttk.Combobox(
+            p, textvariable=self.sparse_var, values=["", "true", "false"],
+            state="readonly", width=12), "Disco solo ocupa lo usado.")
+        self.lh_var = tk.StringVar(value="")
+        r2 = _row(card_limits, r2, "Localhost fwd:", lambda p: ttk.Combobox(
+            p, textvariable=self.lh_var, values=["", "true", "false"],
+            state="readonly", width=12), "localhostForwarding: acceso desde localhost.")
         ttk.Button(card_limits, text="Aplicar limites", bootstyle="warning",
                    command=self._apply_limits).grid(row=r2, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
@@ -609,6 +624,10 @@ class MainWindow:
             self.mem_var.set(str(limits.get("memory_gb", "")) if limits.get("memory_gb") else "")
             self.cpu_var.set(str(limits.get("processors", "")) if limits.get("processors") else "")
             self.swap_var.set(str(limits.get("swap_gb", "")) if limits.get("swap_gb") else "")
+            self.vhd_var.set(str(limits.get("default_vhd_gb", "")) if limits.get("default_vhd_gb") else "")
+            self.reclaim_var.set(limits.get("auto_memory_reclaim", "") or "")
+            self.sparse_var.set(str(limits.get("sparse_vhd", "")) if limits.get("sparse_vhd") else "")
+            self.lh_var.set(str(limits.get("localhost_forwarding", "")) if limits.get("localhost_forwarding") else "")
         except Exception:
             pass
 
@@ -653,6 +672,18 @@ class MainWindow:
             swap = self.swap_var.get().strip()
             if swap:
                 kwargs["swap_gb"] = float(swap)
+            vhd = self.vhd_var.get().strip()
+            if vhd:
+                kwargs["default_vhd_gb"] = float(vhd)
+            reclaim = self.reclaim_var.get().strip()
+            if reclaim:
+                kwargs["auto_memory_reclaim"] = reclaim
+            sparse = self.sparse_var.get().strip()
+            if sparse:
+                kwargs["sparse_vhd"] = sparse
+            lh = self.lh_var.get().strip()
+            if lh:
+                kwargs["localhost_forwarding"] = lh
             if not kwargs:
                 messagebox.showwarning("Limites", "Escribe al menos un valor.")
                 return

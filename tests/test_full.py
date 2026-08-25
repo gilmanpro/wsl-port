@@ -300,12 +300,18 @@ def test_wslconfig_limits_roundtrip(monkeypatch, tmp_path):
     fake = tmp_path / ".wslconfig"
     monkeypatch.setattr(core, "wslconfig_path", lambda: fake)
     # escribir
-    r = core.set_global_limits(memory_gb=8, processors=3, swap_gb=2)
+    r = core.set_global_limits(memory_gb=8, processors=3, swap_gb=2,
+                                default_vhd_gb=128, auto_memory_reclaim="gradual",
+                                sparse_vhd="true", localhost_forwarding="true")
     assert r["ok"] is True
     content = fake.read_text(encoding="utf-8")
     assert "memory=8GB" in content
     assert "processors=3" in content
     assert "swap=2GB" in content
+    assert "defaultVhdSize=128GB" in content
+    assert "autoMemoryReclaim=gradual" in content
+    assert "sparseVhd=true" in content
+    assert "localhostForwarding=true" in content
     assert "networkingMode" not in content.lower(), "nunca debe escribir bridged"
     # leer
     limits = core.get_global_limits()
@@ -313,6 +319,18 @@ def test_wslconfig_limits_roundtrip(monkeypatch, tmp_path):
     assert limits["memory_gb"] == 8.0
     assert limits["processors"] == 3
     assert limits["swap_gb"] == 2.0
+    assert limits["default_vhd_gb"] == 128.0
+    assert limits["auto_memory_reclaim"] == "gradual"
+    assert limits["sparse_vhd"] == "true"
+    assert limits["localhost_forwarding"] == "true"
+
+
+def test_wslconfig_reclaim_invalido(monkeypatch, tmp_path):
+    fake = tmp_path / ".wslconfig"
+    monkeypatch.setattr(core, "wslconfig_path", lambda: fake)
+    r = core.set_global_limits(auto_memory_reclaim="loco")
+    assert r["ok"] is False
+    assert "debe ser uno de" in r["error"]
 
 
 def test_wslconfig_limits_noexiste(monkeypatch, tmp_path):
