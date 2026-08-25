@@ -91,3 +91,23 @@ def test_status_incluye_breaker(monkeypatch, clean_breaker):
     st = core.status()
     assert "wsl_breaker" in st
     assert st["wsl_breaker"]["open"] is False
+
+
+def test_kill_tree_no_mata_todas_las_distros(clean_breaker):
+    """_kill_tree NO debe usar taskkill /IM wsl.exe (mataria todas las distros)."""
+    import subprocess as sp
+    calls = []
+    real_run = sp.run
+
+    def fake_run(args, *a, **k):
+        calls.append(args)
+        return real_run(args, *a, **k)
+
+    with mock.patch.object(sa.subprocess, "run", fake_run):
+        sa._kill_tree(1234)
+    assert calls, "debe llamar taskkill"
+    for call in calls:
+        joined = " ".join(str(x) for x in call).lower()
+        assert "/im" not in joined, f"NO debe matar por nombre: {call}"
+        assert "wsl.exe" not in joined, f"NO debe matar por nombre: {call}"
+        assert "/pid" in joined, f"debe matar por PID: {call}"
