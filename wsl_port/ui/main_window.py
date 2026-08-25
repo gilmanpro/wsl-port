@@ -551,9 +551,28 @@ class MainWindow:
         ttk.Label(card_paths, text="Dejar vacio para autodetectar.", style="Sub.TLabel").grid(
             row=r, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
+        # ROW 3: Limites de recursos (.wslconfig)
+        card_limits = _card(inner, "Limites de recursos WSL (.wslconfig)", row=3, col=0, colspan=2)
+
+        r = 0
+        ttk.Label(card_limits, text="Se escribe en %USERPROFILE%\\.wslconfig. Vacio = sin cambio.",
+                  style="Sub.TLabel").grid(row=r, column=0, columnspan=4, sticky="w", pady=(0, 8))
+        r += 1
+        self.mem_var = tk.StringVar(value="")
+        r2 = _row(card_limits, r, "RAM (GB):", lambda p: ttk.Entry(p, textvariable=self.mem_var, width=8),
+                  "Ej: 8. Vacio = dejar como esta.")
+        self.cpu_var = tk.StringVar(value="")
+        r2 = _row(card_limits, r2, "Procesadores:", lambda p: ttk.Entry(p, textvariable=self.cpu_var, width=8),
+                  "Ej: 4. Vacio = dejar como esta.")
+        self.swap_var = tk.StringVar(value="")
+        r2 = _row(card_limits, r2, "Swap (GB):", lambda p: ttk.Entry(p, textvariable=self.swap_var, width=8),
+                  "Ej: 4. Vacio = dejar como esta.")
+        ttk.Button(card_limits, text="Aplicar limites", bootstyle="warning",
+                   command=self._apply_limits).grid(row=r2, column=0, columnspan=2, sticky="w", pady=(8, 0))
+
         # Save button
         btn_frame = ttk.Frame(inner)
-        btn_frame.grid(row=3, column=0, columnspan=2, pady=(12, 16))
+        btn_frame.grid(row=4, column=0, columnspan=2, pady=(12, 16))
         ttk.Button(btn_frame, text="  Guardar ajustes  ", bootstyle="success",
                    command=self._save_settings).pack(side="left", padx=6)
         ttk.Button(btn_frame, text="  Restaurar valores  ", bootstyle="secondary outline",
@@ -584,6 +603,14 @@ class MainWindow:
             self.netsh_exe_var.set(cfg.windows.netsh_exe)
         except Exception:
             pass
+        # Limites de recursos (.wslconfig)
+        try:
+            limits = core.get_global_limits()
+            self.mem_var.set(str(limits.get("memory_gb", "")) if limits.get("memory_gb") else "")
+            self.cpu_var.set(str(limits.get("processors", "")) if limits.get("processors") else "")
+            self.swap_var.set(str(limits.get("swap_gb", "")) if limits.get("swap_gb") else "")
+        except Exception:
+            pass
 
     def _gen_api_token(self) -> None:
         import hashlib
@@ -611,6 +638,33 @@ class MainWindow:
                             f"Token API generado (scope {scope}).\n\n{token}\n\n"
                             "Guardalo: NO se volvera a mostrar.\n"
                             f"Uso: Authorization: Bearer {token}")
+
+    def _apply_limits(self) -> None:
+        """Aplicar limites de recursos a .wslconfig (seguro, sin bridged)."""
+        from tkinter import messagebox
+        try:
+            kwargs = {}
+            mem = self.mem_var.get().strip()
+            if mem:
+                kwargs["memory_gb"] = float(mem)
+            cpu = self.cpu_var.get().strip()
+            if cpu:
+                kwargs["processors"] = int(cpu)
+            swap = self.swap_var.get().strip()
+            if swap:
+                kwargs["swap_gb"] = float(swap)
+            if not kwargs:
+                messagebox.showwarning("Limites", "Escribe al menos un valor.")
+                return
+            r = core.set_global_limits(**kwargs)
+            if r.get("ok"):
+                self._notify("Limites", r.get("message", "Limites aplicados"), "success")
+                messagebox.showinfo("Limites", r.get("message", "Limites aplicados"))
+            else:
+                self._notify("Limites", f"Error: {r.get('error')}", "error")
+                messagebox.showerror("Limites", r.get("error", "Error"))
+        except Exception as e:
+            messagebox.showerror("Limites", f"Error: {e}")
 
     def _save_settings(self) -> None:
         from tkinter import messagebox

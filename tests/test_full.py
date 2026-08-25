@@ -295,6 +295,34 @@ def test_doctor_and_status_shape(empty_state, mock_wsl):
         assert k in st
 
 
+def test_wslconfig_limits_roundtrip(monkeypatch, tmp_path):
+    """get/set_global_limits lee y escribe .wslconfig sin modo bridged."""
+    fake = tmp_path / ".wslconfig"
+    monkeypatch.setattr(core, "wslconfig_path", lambda: fake)
+    # escribir
+    r = core.set_global_limits(memory_gb=8, processors=3, swap_gb=2)
+    assert r["ok"] is True
+    content = fake.read_text(encoding="utf-8")
+    assert "memory=8GB" in content
+    assert "processors=3" in content
+    assert "swap=2GB" in content
+    assert "networkingMode" not in content.lower(), "nunca debe escribir bridged"
+    # leer
+    limits = core.get_global_limits()
+    assert limits["exists"] is True
+    assert limits["memory_gb"] == 8.0
+    assert limits["processors"] == 3
+    assert limits["swap_gb"] == 2.0
+
+
+def test_wslconfig_limits_noexiste(monkeypatch, tmp_path):
+    fake = tmp_path / "no-existe.wslconfig"
+    monkeypatch.setattr(core, "wslconfig_path", lambda: fake)
+    limits = core.get_global_limits()
+    assert limits["exists"] is False
+    assert limits["memory_gb"] is None
+
+
 # ---------------------------------------------------------------------------
 # CLI: all command handlers run
 # ---------------------------------------------------------------------------

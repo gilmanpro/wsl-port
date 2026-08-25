@@ -1093,6 +1093,116 @@ def _is_admin() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Recursos WSL (.wslconfig) - seguro, sin modo bridged
+# ---------------------------------------------------------------------------
+
+def wslconfig_path() -> Path:
+    """Ruta del .wslconfig (limites de recursos WSL2)."""
+    import os
+    return Path(os.environ.get("USERPROFILE", "")) / ".wslconfig"
+
+
+def _parse_size_gb(value: str):
+    """'8GB'/'4096MB' -> GB. None si no se puede parsear."""
+    import re
+    m = re.match(r"(\d+(?:\.\d+)?)\s*([GMK])?B?", str(value).strip(), re.IGNORECASE)
+    if not m:
+        return None
+    num = float(m.group(1))
+    unit = (m.group(2) or "G").upper()
+    if unit == "G":
+        return num
+    if unit == "M":
+        return num / 1024
+    if unit == "K":
+        return num / (1024 * 1024)
+    return num
+
+
+def get_global_limits() -> dict:
+    """Lee los limites de recursos del .wslconfig (seccion [wsl2])."""
+    path = wslconfig_path()
+    limits = {"memory_gb": None, "processors": None, "swap_gb": None,
+              "exists": False, "path": str(path)}
+    if not path.exists():
+        return limits
+    limits["exists"] = True
+    try:
+        content = path.read_text(encoding="utf-8-sig", errors="replace")
+        for line in content.splitlines():
+            s = line.strip()
+            if s.startswith("#") or "=" not in s:
+                continue
+            key, _, value = s.partition("=")
+            key = key.strip().lower()
+            value = value.strip()
+            if key == "memory":
+                limits["memory_gb"] = _parse_size_gb(value)
+            elif key == "processors":
+                try:
+                    limits["processors"] = int(value)
+                except ValueError:
+                    pass
+            elif key == "swap":
+                limits["swap_gb"] = _parse_size_gb(value)
+    except Exception:
+        pass
+    return limits
+
+
+def set_global_limits(memory_gb: float | None = None,
+                      processors: int | None = None,
+                      swap_gb: float | None = None) -> dict:
+    """Escribe los limites en .wslconfig (con backup). Preserva otras opciones.
+
+    Nunca escribe networkingMode (evita el modo bridged que colgo WSL).
+    """
+    import os
+    import shutil
+    path = wslconfig_path()
+    if path.exists():
+        try:
+            shutil.copy2(path, path.with_suffix(".backup"))
+        except Exception:
+            pass
+
+    # Leer opciones [wsl2] existentes para preservar las no gestionadas
+    existing: dict[str, str] = {}
+    if path.exists():
+        try:
+            in_wsl2 = False
+            for line in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
+                s = line.strip()
+                if s.startswith("["):
+                    in_wsl2 = s.lower() == "[wsl2]"
+                    continue
+                if in_wsl2 and "=" in s and not s.startswith("#"):
+                    k, _, v = s.partition("=")
+                    existing[k.strip().lower()] = v.strip()
+        except Exception:
+            pass
+
+    if memory_gb is not None:
+        existing["memory"] = f"{float(memory_gb):g}GB"
+    if processors is not None:
+        existing["processors"] = str(int(processors))
+    if swap_gb is not None:
+        existing["swap"] = f"{float(swap_gb):g}GB"
+    # Defaults seguros si no existen
+    existing.setdefault("localhostForwarding", "true")
+    existing.setdefault("nestedVirtualization", "true")
+
+    lines = ["[wsl2]"]
+    for k, v in existing.items():
+        lines.append(f"{k}={v}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return {"ok": True,
+            "message": "Limites guardados en .wslconfig. Reinicia WSL para aplicar (wsl --shutdown).",
+            "path": str(path)}
+
+
+# ---------------------------------------------------------------------------
 # Publish (flujo 1-click)
 # ---------------------------------------------------------------------------
 
