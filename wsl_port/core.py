@@ -979,8 +979,78 @@ def doctor() -> dict:
     except Exception:
         pass
 
+    # 6. Servicios nssm-wsl-* (causa raiz de colgados WSL)
+    try:
+        nssm_ok, nssm_msg = _check_nssm_wsl_services()
+        checks.append({"check": "nssm_wsl_service", "ok": nssm_ok,
+                        "message": nssm_msg})
+    except Exception as e:
+        checks.append({"check": "nssm_wsl_service", "ok": False,
+                        "message": f"no se pudo verificar: {e}"})
+
     all_ok = all(c["ok"] for c in checks)
     return {"ok": all_ok, "checks": checks}
+
+
+def _check_nssm_wsl_services() -> tuple[bool, str]:
+    """Detecta servicios nssm-wsl-* que mantienen sesiones WSL persistentes.
+
+    Un servicio tipo 'nssm-wsl-debian' que ejecuta 'wsl -d <distro>' deja
+    wsl.exe colgados cuando la distro se atasca, degradando todo WSL.
+    La app wsl-port ya gestiona las distros, asi que ese servicio sobra.
+    """
+    import subprocess as sp
+
+    def _query(names: list[str]) -> dict[str, str]:
+        states: dict[str, str] = {}
+        for name in names:
+            try:
+                q = sp.run(["sc.exe", "query", name], capture_output=True,
+                           text=True, timeout=10, creationflags=0x08000000)
+                out = q.stdout.upper()
+                if "RUNNING" in out or "STOP_PENDING" in out:
+                    states[name] = "RUNNING"
+                elif "STOPPED" in out:
+                    states[name] = "STOPPED"
+                elif "DISABLED" in out or "DISABLED" in q.stderr.upper():
+                    states[name] = "DISABLED"
+                else:
+                    states[name] = "?"
+            except Exception:
+                states[name] = "?"
+        return states
+
+    try:
+        proc = sp.run(
+            ["sc.exe", "query", "type=", "service", "state=", "all"],
+            capture_output=True, text=True, timeout=10,
+            creationflags=0x08000000,
+        )
+    except Exception as e:
+        return True, f"consulta de servicios no disponible ({e})"
+    if proc.returncode != 0:
+        return True, "no se pudieron consultar servicios"
+
+    # Extraer nombres de servicios nssm-wsl-* (idioma independiente)
+    names = []
+    for line in proc.stdout.splitlines():
+        if "nssm-wsl-" in line.lower() and ":" in line:
+            svc = line.split(":", 1)[1].strip()
+            if svc and svc.lower().startswith("nssm-wsl-") and svc not in names:
+                names.append(svc)
+
+    if not names:
+        return True, "sin servicios nssm-wsl (ok)"
+
+    states = _query(names)
+    running = [n for n, s in states.items() if s == "RUNNING"]
+    if running:
+        return False, (
+            "Servicio(s) nssm-wsl ACTIVOS que pueden colgar WSL: "
+            + ", ".join(running)
+            + ". Ejecuta 'eliminar-nssm.bat' como admin."
+        )
+    return True, "nssm-wsl presente pero detenido/deshabilitado (ok)"
 
 
 # ---------------------------------------------------------------------------
