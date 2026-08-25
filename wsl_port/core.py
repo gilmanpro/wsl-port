@@ -29,37 +29,25 @@ _WSL_CHECK_INTERVAL = 60.0  # seconds between health checks
 
 def wsl_health_check(force: bool = False) -> bool:
     """Check if WSL is responsive. Returns True if healthy.
-    
-    Uses a fast 3s timeout to detect hung WSL quickly.
-    Caches result for 60s to avoid repeated checks.
-    NO auto-recovery - just detect and skip.
+
+    Usa el ejecutor del vendor (con circuit breaker + serializacion), por lo
+    que si WSL esta colgado falla al instante (0ms) sin lanzar wsl.exe.
+    Cachea el resultado 60s para no repetir el probe.
     """
     global _wsl_healthy, _wsl_last_check
     import time as _time
-    
+
     now = _time.time()
     if not force and _wsl_healthy is not None and (now - _wsl_last_check) < _WSL_CHECK_INTERVAL:
         return _wsl_healthy
-    
-    try:
-        proc = subprocess.run(
-            ["wsl.exe", "--list", "--verbose"],
-            capture_output=True, timeout=3,
-            creationflags=0x08000000
-        )
-        _wsl_healthy = proc.returncode == 0
-        _wsl_last_check = now
-        return _wsl_healthy
-    except subprocess.TimeoutExpired:
-        _wsl_healthy = False
-        _wsl_last_check = now
-        log.warning("WSL no responde (3s timeout) - reinicia el PC")
-        return False
-    except Exception as e:
-        _wsl_healthy = False
-        _wsl_last_check = now
-        log.warning("WSL error: %s", e)
-        return False
+
+    from wsl_port.vendor.wsl_manager.utils.subprocess_async import run
+    r = run(["wsl.exe", "--list", "--verbose"], timeout=3)
+    _wsl_healthy = r.ok
+    _wsl_last_check = now
+    if not _wsl_healthy:
+        log.warning("WSL no responde (%s)", r.error or "fallo")
+    return _wsl_healthy
 
 
 def wsl_is_hung() -> bool:
@@ -68,10 +56,24 @@ def wsl_is_hung() -> bool:
 
 
 def wsl_reset() -> None:
-    """Reset WSL health state (call after PC restart)."""
+    """Reset WSL health state + circuit breaker (call after PC restart)."""
     global _wsl_healthy, _wsl_last_check
     _wsl_healthy = None
     _wsl_last_check = 0.0
+    try:
+        from wsl_port.vendor.wsl_manager.utils.subprocess_async import reset_breaker
+        reset_breaker()
+    except Exception:
+        pass
+
+
+def wsl_breaker_state() -> dict:
+    """Estado del cortocircuito de WSL (diagnostico)."""
+    try:
+        from wsl_port.vendor.wsl_manager.utils.subprocess_async import breaker_state
+        return breaker_state()
+    except Exception:
+        return {}
 
 # ---------------------------------------------------------------------------
 # Lazy singletons
@@ -187,21 +189,17 @@ _IP_CACHE_TTL = 30.0  # seconds
 
 
 def _get_ip_fast(name: str) -> str | None:
-    """Get IP with caching to avoid slow WSL calls."""
+    """Get IP with caching to avoid slow WSL calls. Usa el ejecutor con breaker."""
     import time
     now = time.time()
     cached = _ip_cache.get(name)
     if cached and (now - cached[1]) < _IP_CACHE_TTL:
         return cached[0]
     try:
-        import subprocess
-        proc = subprocess.run(
-            ["wsl.exe", "-d", name, "hostname", "-I"],
-            capture_output=True, text=True, timeout=5,
-            creationflags=0x08000000
-        )
-        if proc.returncode == 0:
-            ip = proc.stdout.strip().split()[0] if proc.stdout.strip() else None
+        from wsl_port.vendor.wsl_manager.utils.subprocess_async import run
+        r = run(["wsl.exe", "-d", name, "hostname", "-I"], timeout=5, breaker=False)
+        if r.ok:
+            ip = r.output.strip().split()[0] if r.output.strip() else None
             if ip and not ip.startswith("169.254"):
                 _ip_cache[name] = (ip, now)
                 return ip
@@ -246,7 +244,8 @@ def start_distro(name: str) -> dict:
         return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
         r = wsl_provider().start(name)
-        return {"ok": r.ok, "output": r.output, "error": r.error}
+        return {"ok": r.ok, "output": r.output, "error": r.error,
+                "message": f"Distro '{name}' iniciada" if r.ok else (r.error or "fallo")}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -256,7 +255,8 @@ def stop_distro(name: str) -> dict:
         return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
         r = wsl_provider().stop(name)
-        return {"ok": r.ok, "output": r.output, "error": r.error}
+        return {"ok": r.ok, "output": r.output, "error": r.error,
+                "message": f"Distro '{name}' detenida" if r.ok else (r.error or "fallo")}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -266,7 +266,8 @@ def restart_distro(name: str) -> dict:
         return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
         r = wsl_provider().restart(name)
-        return {"ok": r.ok, "output": r.output, "error": r.error}
+        return {"ok": r.ok, "output": r.output, "error": r.error,
+                "message": f"Distro '{name}' reiniciada" if r.ok else (r.error or "fallo")}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -276,7 +277,8 @@ def shutdown_all() -> dict:
         return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
         r = wsl_provider().shutdown_all()
-        return {"ok": r.ok, "output": r.output, "error": r.error}
+        return {"ok": r.ok, "output": r.output, "error": r.error,
+                "message": "Distros detenidas" if r.ok else (r.error or "fallo")}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -285,14 +287,10 @@ def get_ip(name: str) -> str | None:
     if not wsl_health_check():
         return None
     try:
-        import subprocess
-        proc = subprocess.run(
-            ["wsl.exe", "-d", name, "hostname", "-I"],
-            capture_output=True, text=True, timeout=10,
-            creationflags=0x08000000
-        )
-        if proc.returncode == 0:
-            ip = proc.stdout.strip().split()[0] if proc.stdout.strip() else None
+        from wsl_port.vendor.wsl_manager.utils.subprocess_async import run
+        r = run(["wsl.exe", "-d", name, "hostname", "-I"], timeout=8, breaker=False)
+        if r.ok:
+            ip = r.output.strip().split()[0] if r.output.strip() else None
             if ip and not ip.startswith("169.254"):
                 return ip
         return None
@@ -1012,6 +1010,7 @@ def status(fast: bool = False) -> dict:
         "admin": _is_admin(),
         "wsl_healthy": wsl_ok,
         "wsl_hung": not wsl_ok,
+        "wsl_breaker": wsl_breaker_state(),
     }
 
 

@@ -1158,7 +1158,8 @@ class MainWindow:
         threading.Thread(target=self._worker, args=(fast,), daemon=True).start()
 
     def _refresh_full(self) -> None:
-        """Manual refresh with full IP detection."""
+        """Manual refresh: re-probar WSL (tras reinicio) + IPs completas."""
+        core.wsl_reset()  # cerrar breaker/cache por si WSL se reinicio
         self._refresh(fast=False)
 
     def _worker(self, fast: bool = False) -> None:
@@ -1195,9 +1196,11 @@ class MainWindow:
             # Check WSL health
             wsl_hung = st.get("wsl_hung", False)
             if wsl_hung:
-                self.header_status.configure(
-                    text="WSL no responde - reinicia el PC",
-                    foreground="orange")
+                breaker = st.get("wsl_breaker", {})
+                text = "WSL no responde - reinicia el PC"
+                if breaker.get("open"):
+                    text = "WSL colgado - se re-probara en ~30s"
+                self.header_status.configure(text=text, foreground="orange")
                 continue
             
             up = sum(1 for d in st["distros"] if d.get("running"))
