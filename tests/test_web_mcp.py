@@ -238,6 +238,11 @@ def test_panel_dashboard_incluye_distros(panel):
     assert "renderDistros" in html
     assert "distroAction" in html
     assert "Tarea terminada" in html
+    # Export/import desde el navegador
+    assert "exportDistro" in html
+    assert "importDistro" in html
+    assert "imp-file" in html
+    assert 'href="javascript:;"' or "download = name" in html
 
 
 # ---------------------------------------------------------------------------
