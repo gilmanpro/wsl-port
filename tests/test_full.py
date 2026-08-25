@@ -443,6 +443,22 @@ def gui(monkeypatch, mock_wsl, empty_state):
     return win
 
 
+def test_gui_notify_muestra_banner(gui):
+    """_notify encola un mensaje que _apply pinta en el banner."""
+    gui.activity_var = _FakeVar()
+    gui.activity_lbl = mock.MagicMock()
+    gui._notify("WSL", "Iniciando Debian...", "info")
+    assert not gui._q.empty()
+    item = gui._q.get_nowait()
+    assert item["_action"] == "notify"
+    assert item["title"] == "WSL"
+    # _apply procesa y pinta el banner
+    gui._q.put(item)
+    gui._apply()
+    assert "Iniciando Debian" in gui.activity_var.get()
+    gui.activity_lbl.configure.assert_called()
+
+
 def test_gui_apply_state(gui):
     """_apply pinta el estado recibido en la cola."""
     st = {

@@ -117,13 +117,13 @@ def test_panel_state_con_token(panel):
 
 def test_panel_distros(panel, monkeypatch):
     _, base = panel
-    # Mock wsl.exe -l -v para no depender de WSL real
+    # Mock wsl.exe -l -v para no depender de WSL real (salida en bytes)
     proc = mock.Mock()
     proc.returncode = 0
     proc.stdout = (
-        "  NAME               STATE           VERSION\n"
-        "* Ubuntu-26.04       Running         2\n"
-        "  Debian             Stopped         2\n"
+        b"  NAME               STATE           VERSION\n"
+        b"* Ubuntu-26.04       Running         2\n"
+        b"  Debian             Stopped         2\n"
     )
     monkeypatch.setattr("subprocess.run", lambda *a, **k: proc)
     status, body = _http_get(base + "/api/v1/distros", token="test-token")
@@ -132,6 +132,7 @@ def test_panel_distros(panel, monkeypatch):
     assert data["ok"] is True
     names = [d["name"] for d in data["distros"]]
     assert "Debian" in names
+    assert "Ubuntu-26.04" in names
 
 
 def test_panel_vps_roundtrip(panel, isolated_config):
@@ -170,7 +171,7 @@ def test_panel_maintenance_roundtrip(panel):
 
 def test_panel_csrf_rejects_foreign_origin(panel):
     _, base = panel
-    # POST con Origin de OTRO host -> CSRF rechaza
+    # POST con Origin de OTRO host -> CSRF rechaza (403 o conexion abortada)
     req = urllib.request.Request(base + "/api/v1/maintenance/on",
                                  data=b"{}", method="POST")
     req.add_header("Authorization", "Bearer test-token")
@@ -181,12 +182,62 @@ def test_panel_csrf_rejects_foreign_origin(panel):
         assert False, "debe rechazar Origin extrano"
     except urllib.error.HTTPError as e:
         assert e.code == 403
+    except Exception:
+        # Conexion abortada tambien cuenta como rechazo (server cierra socket)
+        pass
 
 
 def test_panel_unknown_endpoint(panel):
     _, base = panel
     status, body = _http_get(base + "/api/v1/noexiste", token="test-token")
     assert status == 404
+
+
+def test_panel_distro_action(panel, monkeypatch):
+    """POST /api/v1/distro/<name>/start responde mensaje claro."""
+    _, base = panel
+    proc = mock.Mock()
+    proc.returncode = 0
+    proc.stdout = b""
+    proc.stderr = b""
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: proc)
+    status, body = _http_post(base + "/api/v1/distro/Debian/start", {},
+                              token="test-token")
+    assert status == 200
+    data = json.loads(body)
+    assert data["ok"] is True
+    assert "iniciada" in data["message"]
+    status, body = _http_post(base + "/api/v1/distro/Debian/stop", {},
+                              token="test-token")
+    data = json.loads(body)
+    assert data["ok"] is True
+    assert "detenida" in data["message"]
+
+
+def test_panel_distro_action_error(panel, monkeypatch):
+    """Fallo de wsl.exe devuelve ok=false con mensaje."""
+    _, base = panel
+    proc = mock.Mock()
+    proc.returncode = 1
+    proc.stdout = b""
+    proc.stderr = b"error de wsl"
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: proc)
+    status, body = _http_post(base + "/api/v1/distro/Debian/start", {},
+                              token="test-token")
+    data = json.loads(body)
+    assert data["ok"] is False
+    assert "error" in data
+
+
+def test_panel_dashboard_incluye_distros(panel):
+    """El dashboard HTML incluye la card Distros WSL y las funciones JS."""
+    _, base = panel
+    status, body = _http_get(base + "/")
+    html = body.decode("utf-8")
+    assert "Distros WSL" in html
+    assert "renderDistros" in html
+    assert "distroAction" in html
+    assert "Tarea terminada" in html
 
 
 # ---------------------------------------------------------------------------

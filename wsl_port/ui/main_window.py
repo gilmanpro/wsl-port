@@ -204,18 +204,36 @@ class MainWindow:
         self.root.focus_force()
 
     def _notify(self, title: str, message: str, level: str = "info") -> None:
-        """Mostrar notificacion toast de Windows."""
+        """Notificacion de actividad: banner en-app (siempre visible) + toast Windows.
+
+        Thread-safe: el banner se actualiza via la cola (main thread).
+        level: info | success | warning | error
+        """
         try:
-            from winotify import Notification
-            toast = Notification(
-                app_id="wsl-port",
-                title=title,
-                msg=message,
-            )
-            toast.show()
+            self._q.put({"_action": "notify", "title": title,
+                         "message": message, "level": level})
         except Exception:
-            # Fallback: print to console
+            pass
+        # Toast de Windows (opcional, en thread aparte)
+        try:
+            def _toast():
+                from winotify import Notification
+                Notification(app_id="wsl-port", title=title,
+                             msg=message).show()
+            threading.Thread(target=_toast, daemon=True).start()
+        except Exception:
             print(f"[{level.upper()}] {title}: {message}")
+
+    def _show_activity(self, title: str, message: str, level: str = "info") -> None:
+        """Pinta el mensaje en el banner y lo borra tras 5s."""
+        colors = {"info": _COLORS["info"], "success": _COLORS["success"],
+                  "warning": _COLORS["warning"], "error": _COLORS["danger"]}
+        self.activity_var.set(f"[{title}] {message}")
+        self.activity_lbl.configure(foreground=colors.get(level, _COLORS["info"]))
+        try:
+            self.root.after(5000, lambda: self.activity_var.set(""))
+        except Exception:
+            pass
 
     # -- UI ------------------------------------------------------------------
 
@@ -281,6 +299,13 @@ class MainWindow:
         bar.pack(fill="x", side="bottom")
         self.status_var = tk.StringVar(value="cargando...")
         ttk.Label(bar, textvariable=self.status_var, style="Sub.TLabel").pack(side="left")
+
+        # -- Activity banner (mensajes de tareas iniciadas/terminadas) ------------
+        self.activity_var = tk.StringVar(value="")
+        self.activity_lbl = ttk.Label(self.root, textvariable=self.activity_var,
+                                      font=(_FONT, 10, "bold"), padding=(20, 4),
+                                      foreground=_COLORS["info"])
+        self.activity_lbl.pack(fill="x", side="bottom")
 
     # -- Distros tab ------------------------------------------------------------
 
@@ -1188,6 +1213,9 @@ class MainWindow:
             if "_action" in st:
                 if st["_action"] == "refresh":
                     self._refresh()
+                elif st["_action"] == "notify":
+                    self._show_activity(st.get("title", ""), st.get("message", ""),
+                                        st.get("level", "info"))
                 continue
             if "error" in st:
                 self.status_var.set(f"error: {st['error']}")
