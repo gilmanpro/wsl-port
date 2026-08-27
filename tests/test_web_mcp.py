@@ -232,7 +232,7 @@ def test_panel_distro_action_error(panel, monkeypatch):
 def test_panel_dashboard_incluye_distros(panel):
     """El dashboard HTML incluye la card Distros WSL y las funciones JS."""
     _, base = panel
-    status, body = _http_get(base + "/")
+    status, body = _http_get(base + "/", token="test-token")
     html = body.decode("utf-8")
     assert "Distros WSL" in html
     assert "renderDistros" in html
@@ -243,6 +243,16 @@ def test_panel_dashboard_incluye_distros(panel):
     assert "importDistro" in html
     assert "imp-file" in html
     assert 'href="javascript:;"' or "download = name" in html
+
+
+def test_panel_login_page_sin_token(panel):
+    """GET / sin token muestra login, no dashboard."""
+    _, base = panel
+    status, body = _http_get(base + "/")
+    html = body.decode("utf-8")
+    assert status == 200
+    assert "Introduce el token" in html
+    assert 'id="token"' in html
 
 
 # ---------------------------------------------------------------------------
