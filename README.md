@@ -4,12 +4,20 @@
 [![Integracion](https://img.shields.io/badge/Integra-WSL%20Manager%20%2B%20Port%20Forwarding-2ea44f)](#caracteristicas-integradas)
 [![Plataforma](https://img.shields.io/badge/Plataforma-Windows%2010%2F11-0078D6?logo=windows&logoColor=white)](#requisitos)
 [![Licencia](https://img.shields.io/badge/Licencia-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-7%2F7%20passed-2ea44f)](#tests)
+[![Tests](https://img.shields.io/badge/Tests-94%2F94%20passed-2ea44f)](#tests)
 [![Open Source](https://img.shields.io/badge/Open%20Source-Yes-2ea44f)](LICENSE)
 
 > **Publica cualquier servicio de tu WSL en Internet con 1 clic.** wsl-port une **WSL Manager** (tus distros) y **Port Forwarding Manager** (tuneles al VPS) en una sola ventana y un solo comando.
 
 **Reemplaza a las 2 apps por separado** — si usas wsl-port ya no necesitas abrir WSL Manager ni Port Forwarder.
+
+### Ecosistema
+
+| Repositorio | Descripción | Rol |
+|---|---|---|
+| **[wsl-port](https://github.com/gilmanpro/wsl-port)** | **App unificada** (este repo) — WSL + Internet en 1 clic | ⭐ Recomendado |
+| [wsl-manager-gui](https://github.com/gilmanpro/wsl-manager-gui) | Gestión de distros WSL2 (GUI + CLI + panel web + MCP) | Base · vendored en wsl-port |
+| [port-forwarder-app](https://github.com/gilmanpro/port-forwarder-app) | Port forwarding + túneles SSH al VPS (GUI + CLI + panel web + MCP) | Base · vendored en wsl-port |
 
 ---
 
