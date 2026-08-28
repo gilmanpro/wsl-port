@@ -176,7 +176,10 @@ class PublishTab(ttk.Frame):
             cfg = self.ctx.store.get()
 
             # Refresh VPS tree
-            self.vps_tree.delete(*self.vps_tree.get_children())
+            try:
+                self.vps_tree.delete(*self.vps_tree.get_children())
+            except tk.TclError:
+                pass
             vps_list = cfg.publish.vps_list
             for v in vps_list:
                 active_tuns = sum(
@@ -190,7 +193,10 @@ class PublishTab(ttk.Frame):
                 )
 
             # Refresh tunnels tree
-            self.tun_tree.delete(*self.tun_tree.get_children())
+            try:
+                self.tun_tree.delete(*self.tun_tree.get_children())
+            except tk.TclError:
+                pass
             tuns_active = 0
             for t in cfg.forwarding.tunnels:
                 is_active = t.enabled

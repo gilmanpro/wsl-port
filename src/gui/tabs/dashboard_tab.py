@@ -167,7 +167,11 @@ class DashboardTab(ttk.Frame):
                     d.ip = self.ctx.wsl.get_ip(d.name)
             inst = {i.name: i for i in self.ctx.config.distros.instances}
             self._distros = distros
-            self.tree.delete(*self.tree.get_children())
+            # Safe delete: catch TclError for stale items
+            try:
+                self.tree.delete(*self.tree.get_children())
+            except tk.TclError:
+                pass
             filtro = self.filter_var.get().lower()
 
             running_count = 0

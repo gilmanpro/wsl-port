@@ -120,7 +120,10 @@ class TunnelsTab(ttk.Frame):
     def refresh(self) -> None:
         try:
             tunnels = self.ctx.forwarding.list_tunnels()
-            self.tree.delete(*self.tree.get_children())
+            try:
+                self.tree.delete(*self.tree.get_children())
+            except tk.TclError:
+                pass
             connected_count = 0
             disconnected_count = 0
 

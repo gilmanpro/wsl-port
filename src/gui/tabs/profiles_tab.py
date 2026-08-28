@@ -120,7 +120,10 @@ class ProfilesTab(ttk.Frame):
     def refresh(self) -> None:
         try:
             items = ProfileService(self.ctx.store, self.ctx.wsl).list()
-            self.tree.delete(*self.tree.get_children())
+            try:
+                self.tree.delete(*self.tree.get_children())
+            except tk.TclError:
+                pass
 
             total_distros = 0
             active_name = "-"

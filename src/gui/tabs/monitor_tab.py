@@ -124,7 +124,10 @@ class MonitorTab(ttk.Frame):
     def refresh(self) -> None:
         try:
             metrics = self.ctx.resources.get_metrics()
-            self.tree.delete(*self.tree.get_children())
+            try:
+                self.tree.delete(*self.tree.get_children())
+            except tk.TclError:
+                pass
 
             running_count = 0
             total_ram = 0

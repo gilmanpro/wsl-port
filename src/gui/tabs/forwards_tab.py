@@ -130,7 +130,10 @@ class ForwardsTab(ttk.Frame):
     def refresh(self) -> None:
         try:
             forwards = self.ctx.forwarding.list_forwards()
-            self.tree.delete(*self.tree.get_children())
+            try:
+                self.tree.delete(*self.tree.get_children())
+            except tk.TclError:
+                pass
             active_count = 0
             inactive_count = 0
 

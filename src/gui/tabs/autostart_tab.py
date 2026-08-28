@@ -119,7 +119,10 @@ class AutoStartTab(ttk.Frame):
     def refresh(self) -> None:
         try:
             items = self.ctx.autostart.list_autostart()
-            self.tree.delete(*self.tree.get_children())
+            try:
+                self.tree.delete(*self.tree.get_children())
+            except tk.TclError:
+                pass
 
             total = 0
             active = 0

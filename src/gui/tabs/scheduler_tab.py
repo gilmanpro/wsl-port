@@ -115,7 +115,10 @@ class SchedulerTab(ttk.Frame):
     def refresh(self) -> None:
         try:
             tasks = self.ctx.store.get().scheduler.tasks
-            self.tree.delete(*self.tree.get_children())
+            try:
+                self.tree.delete(*self.tree.get_children())
+            except tk.TclError:
+                pass
 
             enabled_count = 0
             disabled_count = 0
