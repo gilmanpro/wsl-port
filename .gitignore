@@ -1,0 +1,63 @@
+# ============================================
+# WSL Manager GUI - .gitignore
+# ============================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+
+# --- Virtual environments ---
+.venv/
+venv/
+ENV/
+
+# --- Build / Packaging ---
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+*.tar.gz
+
+# --- Testing / Quality ---
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+
+# --- Local configuration (may contain secrets) ---
+config.json
+
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# --- Backup files ---
+*.bak
+*.swp
+*.swo
+*~
+
+# --- Security evidence (pentest artifacts) ---
+security/evidence/
+
+# --- Database ---
+metrics.db
+
+# --- IDE / Editor ---
+.vscode/
+.idea/
+*.code-workspace
+*.sublime-project
+*.sublime-workspace
+
+# --- OS generated ---
+.DS_Store
+Thumbs.db
+desktop.ini
