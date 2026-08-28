@@ -99,6 +99,7 @@ class TunnelsTab(ttk.Frame):
 
         ActionButton(action_frame, text="▶ Connect", bootstyle=SUCCESS, command=self._start, width=12).pack(side="left", padx=4)
         ActionButton(action_frame, text="⏹ Disconnect", bootstyle=DANGER, command=self._stop, width=12).pack(side="left", padx=4)
+        ActionButton(action_frame, text="✏ Edit", bootstyle=PRIMARY, command=self._edit_dialog, width=12).pack(side="left", padx=4)
         ActionButton(action_frame, text="🗑 Remove", bootstyle=WARNING, command=self._remove, width=12).pack(side="left", padx=4)
         ActionButton(action_frame, text="🔄 Refresh", bootstyle=INFO, command=self.refresh, width=12).pack(side="left", padx=4)
 
@@ -299,6 +300,103 @@ class TunnelsTab(ttk.Frame):
         ActionButton(
             btn_frame, text="Cancelar", command=dlg.destroy, bootstyle=DANGER, width=14
         ).pack(side="left", padx=6)
+
+    # ── Dialogo editar ──────────────────────────────────────────────────
+    def _edit_dialog(self) -> None:
+        name = self._selected()
+        if not name:
+            return
+        tunnels = self.ctx.forwarding.list_tunnels()
+        tun = next((t for t in tunnels if t.get("name") == name), None)
+        if not tun:
+            messagebox.showerror("WSL Manager", f"Tunnel '{name}' no encontrado")
+            return
+
+        dlg = ttk.Toplevel(self)
+        dlg.title(f"Editar Tunnel: {name}")
+        dlg.geometry("440x440")
+        dlg.transient(self.winfo_toplevel())
+        dlg.grab_set()
+
+        ttk.Label(dlg, text=f"Editar: {name}", font=("Segoe UI", 13, "bold")).pack(pady=(12, 8))
+        ttk.Separator(dlg, bootstyle="secondary").pack(fill="x", padx=16, pady=4)
+
+        form = ttk.Frame(dlg, padding=8)
+        form.pack(fill="x", padx=16)
+
+        # Nombre (no editable)
+        row = ttk.Frame(form)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Nombre:", width=16, anchor="w").pack(side="left")
+        ttk.Label(row, text=name, font=("Segoe UI", 10, "bold")).pack(side="left", padx=(4, 0))
+
+        # Host Remoto
+        row = ttk.Frame(form)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Host Remoto:", width=16, anchor="w").pack(side="left")
+        remote_host_var = tk.StringVar(value=tun.get("remote_host", ""))
+        ttk.Entry(row, textvariable=remote_host_var, width=28, bootstyle="default").pack(side="left", padx=(4, 0))
+
+        # Puerto Remoto
+        row = ttk.Frame(form)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Puerto Remoto:", width=16, anchor="w").pack(side="left")
+        remote_port_var = tk.StringVar(value=str(tun.get("remote_port", "22")))
+        ttk.Entry(row, textvariable=remote_port_var, width=28, bootstyle="default").pack(side="left", padx=(4, 0))
+
+        # Puerto Local
+        row = ttk.Frame(form)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Puerto Local:", width=16, anchor="w").pack(side="left")
+        local_port_var = tk.StringVar(value=str(tun.get("local_port", "2222")))
+        ttk.Entry(row, textvariable=local_port_var, width=28, bootstyle="default").pack(side="left", padx=(4, 0))
+
+        # SSH User
+        row = ttk.Frame(form)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="SSH User:", width=16, anchor="w").pack(side="left")
+        ssh_user_var = tk.StringVar(value=tun.get("ssh_user", "root"))
+        ttk.Entry(row, textvariable=ssh_user_var, width=28, bootstyle="default").pack(side="left", padx=(4, 0))
+
+        ttk.Separator(dlg, bootstyle="secondary").pack(fill="x", padx=16, pady=6)
+
+        checks = ttk.Frame(dlg, padding=(16, 0))
+        checks.pack(fill="x")
+
+        auto_reconnect_var = tk.BooleanVar(value=tun.get("auto_reconnect", True))
+        ttk.Checkbutton(checks, text="Auto-reconnect", variable=auto_reconnect_var, bootstyle="success").pack(anchor="w", pady=2)
+
+        enabled_var = tk.BooleanVar(value=tun.get("enabled", True))
+        ttk.Checkbutton(checks, text="Habilitado", variable=enabled_var, bootstyle="success").pack(anchor="w", pady=2)
+
+        ttk.Separator(dlg, bootstyle="secondary").pack(fill="x", padx=16, pady=6)
+
+        def _ok() -> None:
+            try:
+                self.ctx.forwarding.remove_tunnel(name)
+                new_tun = TunnelCfg(
+                    name=name,
+                    remote_host=remote_host_var.get().strip(),
+                    remote_port=int(remote_port_var.get()),
+                    local_port=int(local_port_var.get()),
+                    ssh_user=ssh_user_var.get().strip(),
+                    ssh_host=tun.get("ssh_host", ""),
+                    auto_reconnect=auto_reconnect_var.get(),
+                    enabled=enabled_var.get(),
+                )
+                r = self.ctx.forwarding.add_tunnel(new_tun)
+                if not r.get("ok"):
+                    messagebox.showerror("WSL Manager", r.get("error", "error"))
+                    return
+                dlg.destroy()
+                self.refresh()
+            except Exception as e:
+                messagebox.showerror("WSL Manager", str(e))
+
+        btn_frame = ttk.Frame(dlg)
+        btn_frame.pack(pady=12)
+        ActionButton(btn_frame, text="Guardar", command=_ok, bootstyle=SUCCESS, width=14).pack(side="left", padx=6)
+        ActionButton(btn_frame, text="Cancelar", command=dlg.destroy, bootstyle=DANGER, width=14).pack(side="left", padx=6)
 
     # ── Acciones ─────────────────────────────────────────────────────────
     def _remove(self) -> None:

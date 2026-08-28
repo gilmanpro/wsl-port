@@ -109,6 +109,7 @@ class ForwardsTab(ttk.Frame):
 
         ActionButton(action_frame, text="▶ Start", bootstyle=SUCCESS, command=self._start, width=10).pack(side="left", padx=4)
         ActionButton(action_frame, text="⏹ Stop", bootstyle=DANGER, command=self._stop, width=10).pack(side="left", padx=4)
+        ActionButton(action_frame, text="✏ Edit", bootstyle=PRIMARY, command=self._edit_dialog, width=10).pack(side="left", padx=4)
         ActionButton(action_frame, text="🗑 Remove", bootstyle=WARNING, command=self._remove, width=10).pack(side="left", padx=4)
         ActionButton(action_frame, text="🔄 Refresh", bootstyle=INFO, command=self.refresh, width=10).pack(side="left", padx=4)
 
@@ -271,6 +272,88 @@ class ForwardsTab(ttk.Frame):
         ActionButton(
             btn_frame, text="Cancelar", command=dlg.destroy, bootstyle=DANGER, width=14
         ).pack(side="left", padx=6)
+
+    # ── Dialogo editar ──────────────────────────────────────────────────
+    def _edit_dialog(self) -> None:
+        name = self._selected()
+        if not name:
+            return
+        # Buscar el forward actual
+        forwards = self.ctx.forwarding.list_forwards()
+        fwd = next((f for f in forwards if f.get("name") == name), None)
+        if not fwd:
+            messagebox.showerror("WSL Manager", f"Forward '{name}' no encontrado")
+            return
+
+        dlg = ttk.Toplevel(self)
+        dlg.title(f"Editar Forward: {name}")
+        dlg.geometry("420x340")
+        dlg.transient(self.winfo_toplevel())
+        dlg.grab_set()
+
+        ttk.Label(dlg, text=f"Editar: {name}", font=("Segoe UI", 13, "bold")).pack(pady=(12, 8))
+        ttk.Separator(dlg, bootstyle="secondary").pack(fill="x", padx=16, pady=4)
+
+        form = ttk.Frame(dlg, padding=8)
+        form.pack(fill="x", padx=16)
+
+        # Nombre (no editable)
+        row = ttk.Frame(form)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Nombre:", width=14, anchor="w").pack(side="left")
+        ttk.Label(row, text=name, font=("Segoe UI", 10, "bold")).pack(side="left", padx=(4, 0))
+
+        # Puerto Local
+        row = ttk.Frame(form)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Puerto Local:", width=14, anchor="w").pack(side="left")
+        local_var = tk.StringVar(value=str(fwd.get("local_port", "")))
+        ttk.Entry(row, textvariable=local_var, width=28, bootstyle="default").pack(side="left", padx=(4, 0))
+
+        # Puerto WSL
+        row = ttk.Frame(form)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Puerto WSL:", width=14, anchor="w").pack(side="left")
+        wsl_port_var = tk.StringVar(value=str(fwd.get("wsl_port", "")))
+        ttk.Entry(row, textvariable=wsl_port_var, width=28, bootstyle="default").pack(side="left", padx=(4, 0))
+
+        # IP WSL
+        row = ttk.Frame(form)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="IP WSL:", width=14, anchor="w").pack(side="left")
+        wsl_ip_var = tk.StringVar(value=fwd.get("wsl_ip", "127.0.0.1"))
+        ttk.Entry(row, textvariable=wsl_ip_var, width=28, bootstyle="default").pack(side="left", padx=(4, 0))
+
+        # Enabled
+        enabled_var = tk.BooleanVar(value=fwd.get("enabled", True))
+        ttk.Checkbutton(form, text="Habilitado", variable=enabled_var, bootstyle="success").pack(anchor="w", pady=4)
+
+        ttk.Separator(dlg, bootstyle="secondary").pack(fill="x", padx=16, pady=4)
+
+        def _ok() -> None:
+            try:
+                # Eliminar el anterior y crear uno nuevo
+                self.ctx.forwarding.remove_forward(name)
+                new_fwd = ForwardItem(
+                    name=name,
+                    local_port=int(local_var.get()),
+                    wsl_port=int(wsl_port_var.get()),
+                    wsl_ip=wsl_ip_var.get().strip() or "127.0.0.1",
+                    enabled=enabled_var.get(),
+                )
+                r = self.ctx.forwarding.add_forward(new_fwd)
+                if not r.get("ok"):
+                    messagebox.showerror("WSL Manager", r.get("error", "error"))
+                    return
+                dlg.destroy()
+                self.refresh()
+            except Exception as e:
+                messagebox.showerror("WSL Manager", str(e))
+
+        btn_frame = ttk.Frame(dlg)
+        btn_frame.pack(pady=12)
+        ActionButton(btn_frame, text="Guardar", command=_ok, bootstyle=SUCCESS, width=14).pack(side="left", padx=6)
+        ActionButton(btn_frame, text="Cancelar", command=dlg.destroy, bootstyle=DANGER, width=14).pack(side="left", padx=6)
 
     # ── Acciones ─────────────────────────────────────────────────────────
     def _remove(self) -> None:
