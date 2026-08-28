@@ -154,18 +154,31 @@ INDEX_HTML = """<!doctype html>
   <button class="nav-tab active" onclick="showPage('dashboard')">Dashboard</button>
   <button class="nav-tab" onclick="showPage('forwards')">Forwards</button>
   <button class="nav-tab" onclick="showPage('tunnels')">Tunnels</button>
-  <button class="nav-tab" onclick="showPage('publish')">Publicar</button>
+  <button class="nav-tab" onclick="showPage('vps')">VPS</button>
+  <button class="nav-tab" onclick="showPage('profiles')">Perfiles</button>
+  <button class="nav-tab" onclick="showPage('scheduler')">Programador</button>
+  <button class="nav-tab" onclick="showPage('autostart')">Autoarranque</button>
+  <button class="nav-tab" onclick="showPage('monitor')">Monitor</button>
+  <button class="nav-tab" onclick="showPage('resources')">Recursos</button>
   <button class="nav-tab" onclick="showPage('config')">Configuracion</button>
   <button class="nav-tab" onclick="showPage('settings')">Ajustes</button>
+  <button class="nav-tab" onclick="showPage('logs')">Logs</button>
   <div style="flex:1"></div>
   <span class="muted" id="clock" style="padding-right:8px"></span>
 </nav>
 
 <!-- ======================== DASHBOARD ======================== -->
 <div class="page active" id="page-dashboard">
-  <div class="page-header">
-    <h2>Dashboard</h2>
-    <div class="sub">Estado de distros, metricas y alertas</div>
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <h2>Dashboard</h2>
+      <div class="sub">Estado de distros, metricas y alertas</div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <input class="form-input" id="dash-filter" placeholder="Filtrar distros..." style="width:180px;padding:5px 10px;font-size:12px" oninput="filterDashCards()">
+      <button class="btn btn-ok" onclick="startAll()">Iniciar todas</button>
+      <button class="btn btn-danger" onclick="shutdownAll()">Detener todas</button>
+    </div>
   </div>
 
   <div class="stats-row" id="dash-stats"></div>
@@ -229,11 +242,11 @@ INDEX_HTML = """<!doctype html>
   </div>
 </div>
 
-<!-- ======================== PUBLISH (Publicar a Internet) ======================== -->
-<div class="page" id="page-publish">
+<!-- ======================== VPS ======================== -->
+<div class="page" id="page-vps">
   <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
     <div>
-      <h2>Publicar a Internet</h2>
+      <h2>VPS</h2>
       <div class="sub">VPS configurados y tunnels para publicar servicios</div>
     </div>
     <button class="btn btn-ok" onclick="openModal('add-vps-modal')">+ Agregar VPS</button>
@@ -255,6 +268,153 @@ INDEX_HTML = """<!doctype html>
       <thead><tr><th>VPS</th><th>Nombre</th><th>Host Remoto</th><th>Puerto Remoto</th><th>Puerto Local</th><th>Estado</th><th>Acciones</th></tr></thead>
       <tbody></tbody>
     </table>
+  </div>
+</div>
+
+<!-- ======================== PROFILES ======================== -->
+<div class="page" id="page-profiles">
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <h2>Perfiles</h2>
+      <div class="sub">Captura y aplica conjuntos de distros</div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-ok" onclick="openModal('capture-profile-modal')">Capturar</button>
+      <button class="btn btn-blue" onclick="editProfile()">Editar</button>
+      <button class="btn" onclick="applyProfile()">Aplicar</button>
+      <button class="btn" onclick="loadProfiles()">&#x21bb; Refrescar</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table id="profiles-table">
+      <thead><tr><th>Nombre</th><th>Descripcion</th><th>Distros a iniciar</th><th>Activo</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ======================== SCHEDULER ======================== -->
+<div class="page" id="page-scheduler">
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <h2>Programador</h2>
+      <div class="sub">Tareas programadas automaticas</div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-ok" onclick="openSchedulerModal()">Nueva tarea</button>
+      <button class="btn btn-blue" onclick="editSchedulerTask()">Editar</button>
+      <button class="btn btn-danger" onclick="removeSchedulerTask()">Eliminar</button>
+      <button class="btn" onclick="runSchedulerTask()">Ejecutar ahora</button>
+      <button class="btn" onclick="loadScheduler()">&#x21bb; Refrescar</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table id="scheduler-table">
+      <thead><tr><th>ID</th><th>Nombre</th><th>Accion</th><th>Destino</th><th>Hora</th><th>Dias</th><th>Habilitada</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ======================== AUTOSTART ======================== -->
+<div class="page" id="page-autostart">
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <h2>Autoarranque</h2>
+      <div class="sub">Distros que se inician al iniciar Windows</div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-ok" onclick="openModal('add-autostart-modal')">Activar</button>
+      <button class="btn btn-blue" onclick="editAutostart()">Editar</button>
+      <button class="btn btn-warn" onclick="disableAutostart()">Desactivar</button>
+      <button class="btn" onclick="loadAutostart()">&#x21bb; Refrescar</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table id="autostart-table">
+      <thead><tr><th>Distro</th><th>Delay (s)</th><th>Comando</th><th>Estado</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ======================== MONITOR ======================== -->
+<div class="page" id="page-monitor">
+  <div class="page-header">
+    <h2>Monitor</h2>
+    <div class="sub">Metricas en tiempo real (actualiza cada 5s)</div>
+  </div>
+
+  <div class="stats-row" id="monitor-stats"></div>
+
+  <div class="table-wrap">
+    <table id="monitor-table">
+      <thead><tr><th>Nombre</th><th>Estado</th><th>RAM usada/total</th><th>%</th><th>CPU</th><th>Uptime</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ======================== RESOURCES ======================== -->
+<div class="page" id="page-resources">
+  <div class="page-header">
+    <h2>Recursos</h2>
+    <div class="sub">Limites globales de WSL (.wslconfig)</div>
+  </div>
+
+  <div class="stats-row" id="resources-stats"></div>
+
+  <div class="settings-section" style="max-width:600px">
+    <h3>Limites Globales</h3>
+    <div class="form-group">
+      <label>Memoria (GB)</label>
+      <input class="form-input" type="number" id="res-memory" min="0.5" max="256" step="0.5" placeholder="(sin limite)">
+    </div>
+    <div class="form-group">
+      <label>Procesadores</label>
+      <input class="form-input" type="number" id="res-processors" min="1" max="256" placeholder="(sin limite)">
+    </div>
+    <div class="form-group">
+      <label>Swap (GB)</label>
+      <input class="form-input" type="number" id="res-swap" min="0" max="256" step="0.5" placeholder="(sin limite)">
+    </div>
+    <div class="form-group">
+      <label>Auto Memory Reclaim</label>
+      <select class="form-input" id="res-auto-reclaim">
+        <option value="">(sin configurar)</option>
+        <option value="gradual">gradual</option>
+        <option value="dropcache">dropcache</option>
+        <option value="disabled">disabled</option>
+      </select>
+    </div>
+    <div class="toggle">
+      <input type="checkbox" id="res-sparse-vhd">
+      <span>Sparse VHD</span>
+    </div>
+    <div style="margin-top:16px;display:flex;gap:8px">
+      <button class="btn btn-ok" onclick="applyResources()">Aplicar limites</button>
+      <button class="btn btn-warn" onclick="resetResources()">Restablecer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================== LOGS ======================== -->
+<div class="page" id="page-logs">
+  <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <h2>Logs</h2>
+      <div class="sub">Eventos del sistema</div>
+    </div>
+    <button class="btn" onclick="loadLogs()">&#x21bb; Refrescar</button>
+  </div>
+
+  <div class="stats-row" id="logs-stats"></div>
+
+  <div class="table-wrap">
+    <div id="logs-container" style="max-height:600px;overflow-y:auto;padding:12px;font-family:'Consolas','Fira Code',monospace;font-size:12px;line-height:1.6"></div>
   </div>
 </div>
 
@@ -383,6 +543,10 @@ INDEX_HTML = """<!doctype html>
         <span>Panel web habilitado</span>
       </div>
       <div class="form-group" style="margin-top:8px">
+        <label>Contraseña del panel</label>
+        <input class="form-input" type="password" id="set-web-password" placeholder="Contraseña de acceso">
+      </div>
+      <div class="form-group" style="margin-top:8px">
         <label>Idioma</label>
         <select class="form-input" id="set-language">
           <option value="es">Español</option>
@@ -440,6 +604,46 @@ INDEX_HTML = """<!doctype html>
   </div>
 </div>
 
+<!-- Edit Forward Modal -->
+<div class="modal-overlay" id="edit-fwd-modal">
+  <div class="modal">
+    <h3>Editar Forward</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Nombre</label>
+        <input class="form-input" id="edit-fwd-name" readonly style="opacity:0.6">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Puerto Local</label>
+        <input class="form-input" id="edit-fwd-local-port" type="number" min="1" max="65535">
+      </div>
+      <div class="form-group">
+        <label>WSL Port</label>
+        <input class="form-input" id="edit-fwd-wsl-port" type="number" min="1" max="65535">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>WSL IP</label>
+        <input class="form-input" id="edit-fwd-wsl-ip">
+      </div>
+      <div class="form-group">
+        <label>&nbsp;</label>
+        <div class="toggle" style="padding-top:8px">
+          <input type="checkbox" id="edit-fwd-enabled" checked>
+          <span>Habilitado</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('edit-fwd-modal')">Cancelar</button>
+      <button class="btn btn-ok" onclick="saveFwdEdit()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Add Tunnel Modal -->
 <div class="modal-overlay" id="add-tun-modal">
   <div class="modal">
@@ -493,6 +697,59 @@ INDEX_HTML = """<!doctype html>
   </div>
 </div>
 
+<!-- Edit Tunnel Modal -->
+<div class="modal-overlay" id="edit-tun-modal">
+  <div class="modal">
+    <h3>Editar Tunnel SSH</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Nombre</label>
+        <input class="form-input" id="edit-tun-name" readonly style="opacity:0.6">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Host Remoto</label>
+        <input class="form-input" id="edit-tun-remote-host">
+      </div>
+      <div class="form-group">
+        <label>Puerto Remoto</label>
+        <input class="form-input" id="edit-tun-remote-port" type="number" min="1" max="65535">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Puerto Local</label>
+        <input class="form-input" id="edit-tun-local-port" type="number" min="1" max="65535">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Usuario SSH</label>
+        <input class="form-input" id="edit-tun-ssh-user">
+      </div>
+      <div class="form-group">
+        <label>SSH Host</label>
+        <input class="form-input" id="edit-tun-ssh-host">
+      </div>
+    </div>
+    <div style="display:flex;gap:16px;margin-top:8px">
+      <div class="toggle">
+        <input type="checkbox" id="edit-tun-auto" checked>
+        <span>Reconexion automatica</span>
+      </div>
+      <div class="toggle">
+        <input type="checkbox" id="edit-tun-enabled" checked>
+        <span>Habilitado</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('edit-tun-modal')">Cancelar</button>
+      <button class="btn btn-ok" onclick="saveTunEdit()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Add VPS Modal -->
 <div class="modal-overlay" id="add-vps-modal">
   <div class="modal">
@@ -532,6 +789,45 @@ INDEX_HTML = """<!doctype html>
   </div>
 </div>
 
+<!-- Edit VPS Modal -->
+<div class="modal-overlay" id="edit-vps-modal">
+  <div class="modal">
+    <h3>Editar VPS</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>ID</label>
+        <input class="form-input" id="edit-vps-id" readonly style="opacity:0.6">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Host (IP o dominio)</label>
+        <input class="form-input" id="edit-vps-host">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Usuario SSH</label>
+        <input class="form-input" id="edit-vps-user">
+      </div>
+      <div class="form-group">
+        <label>Puerto SSH</label>
+        <input class="form-input" id="edit-vps-port" type="number" min="1" max="65535">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Clave SSH (ruta, opcional)</label>
+        <input class="form-input" id="edit-vps-identity">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('edit-vps-modal')">Cancelar</button>
+      <button class="btn btn-ok" onclick="saveVpsEdit()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Connect VPS Modal -->
 <div class="modal-overlay" id="connect-vps-modal">
   <div class="modal">
@@ -555,6 +851,153 @@ INDEX_HTML = """<!doctype html>
     <div class="modal-footer">
       <button class="btn" onclick="closeModal('connect-vps-modal')">Cancelar</button>
       <button class="btn btn-blue" onclick="connectVps()">Abrir Tunnel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Capture Profile Modal -->
+<div class="modal-overlay" id="capture-profile-modal">
+  <div class="modal">
+    <h3>Capturar Perfil</h3>
+    <p style="font-size:13px;color:#b8c0cf;margin-bottom:12px">Captura las distros actualmente en ejecucion como un perfil.</p>
+    <div class="form-group">
+      <label>Nombre del perfil</label>
+      <input class="form-input" id="profile-capture-name" placeholder="mi-perfil">
+    </div>
+    <div class="form-group">
+      <label>Descripcion (opcional)</label>
+      <input class="form-input" id="profile-capture-desc" placeholder="Descripcion del perfil">
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('capture-profile-modal')">Cancelar</button>
+      <button class="btn btn-ok" onclick="captureProfile()">Capturar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Profile Modal -->
+<div class="modal-overlay" id="edit-profile-modal">
+  <div class="modal">
+    <h3>Editar Perfil</h3>
+    <div class="form-group">
+      <label>Nombre del perfil</label>
+      <input class="form-input" id="profile-edit-name" placeholder="nombre">
+    </div>
+    <div class="form-group">
+      <label>Descripcion</label>
+      <input class="form-input" id="profile-edit-desc" placeholder="descripcion">
+    </div>
+    <div class="form-group">
+      <label>Distros a iniciar</label>
+      <div id="profile-edit-distros" style="max-height:200px;overflow-y:auto;padding:8px;background:#14181f;border-radius:6px;border:1px solid #39445c"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('edit-profile-modal')">Cancelar</button>
+      <button class="btn btn-ok" onclick="saveProfileEdit()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Scheduler Task Modal -->
+<div class="modal-overlay" id="scheduler-modal">
+  <div class="modal">
+    <h3 id="scheduler-modal-title">Nueva Tarea</h3>
+    <input type="hidden" id="sched-edit-id" value="">
+    <div class="form-group">
+      <label>Nombre</label>
+      <input class="form-input" id="sched-name" placeholder="mi-tarea">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Tipo de accion</label>
+        <select class="form-input" id="sched-action-type">
+          <option value="distro_start">Iniciar distro</option>
+          <option value="distro_stop">Detener distro</option>
+          <option value="apply_profile">Aplicar perfil</option>
+          <option value="snapshot">Snapshot</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Distro / Perfil</label>
+        <input class="form-input" id="sched-target" placeholder="nombre de distro o perfil">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Hora (HH:MM)</label>
+        <input class="form-input" type="time" id="sched-time" value="09:00">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Dias</label>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
+        <label class="toggle"><input type="checkbox" class="sched-day" value="mon" checked><span>Lun</span></label>
+        <label class="toggle"><input type="checkbox" class="sched-day" value="tue" checked><span>Mar</span></label>
+        <label class="toggle"><input type="checkbox" class="sched-day" value="wed" checked><span>Mie</span></label>
+        <label class="toggle"><input type="checkbox" class="sched-day" value="thu" checked><span>Jue</span></label>
+        <label class="toggle"><input type="checkbox" class="sched-day" value="fri" checked><span>Vie</span></label>
+        <label class="toggle"><input type="checkbox" class="sched-day" value="sat"><span>Sab</span></label>
+        <label class="toggle"><input type="checkbox" class="sched-day" value="sun"><span>Dom</span></label>
+      </div>
+    </div>
+    <div class="toggle" style="margin-top:8px">
+      <input type="checkbox" id="sched-enabled" checked>
+      <span>Habilitada</span>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('scheduler-modal')">Cancelar</button>
+      <button class="btn btn-ok" onclick="saveSchedulerTask()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Autostart Enable Modal -->
+<div class="modal-overlay" id="add-autostart-modal">
+  <div class="modal">
+    <h3>Activar Autoarranque</h3>
+    <div class="form-group">
+      <label>Distro</label>
+      <select class="form-input" id="autostart-distro"></select>
+    </div>
+    <div class="form-group">
+      <label>Retraso (segundos)</label>
+      <input class="form-input" type="number" id="autostart-delay" min="0" max="300" value="0">
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('add-autostart-modal')">Cancelar</button>
+      <button class="btn btn-ok" onclick="enableAutostart()">Activar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Autostart Edit Modal -->
+<div class="modal-overlay" id="edit-autostart-modal">
+  <div class="modal">
+    <h3>Editar Autoarranque</h3>
+    <input type="hidden" id="edit-autostart-distro" value="">
+    <div class="form-group">
+      <label>Retraso (segundos)</label>
+      <input class="form-input" type="number" id="edit-autostart-delay" min="0" max="300" value="0">
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('edit-autostart-modal')">Cancelar</button>
+      <button class="btn btn-ok" onclick="saveAutostartEdit()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Clone Distro Modal -->
+<div class="modal-overlay" id="clone-modal">
+  <div class="modal">
+    <h3>Clonar Distro</h3>
+    <p style="font-size:13px;color:#b8c0cf;margin-bottom:12px">Clonar: <b id="clone-source"></b></p>
+    <div class="form-group">
+      <label>Nombre para la copia</label>
+      <input class="form-input" id="clone-target-name" placeholder="mi-distro-copia">
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('clone-modal')">Cancelar</button>
+      <button class="btn btn-ok" onclick="doClone()">Clonar</button>
     </div>
   </div>
 </div>
@@ -607,6 +1050,7 @@ function toast(msg, isError=false) {
 
 // === Navigation ===
 let currentPage = 'dashboard';
+const ALL_PAGES = ['dashboard','forwards','tunnels','vps','profiles','scheduler','autostart','monitor','resources','config','settings','logs'];
 function showPage(name) {
   currentPage = name;
   $$('.page').forEach(p => p.classList.remove('active'));
@@ -614,8 +1058,14 @@ function showPage(name) {
   const page = $('#page-' + name);
   if (page) page.classList.add('active');
   const tabs = $$('.nav-tab');
-  const idx = ['dashboard','forwards','tunnels','publish','config','settings'].indexOf(name);
+  const idx = ALL_PAGES.indexOf(name);
   if (idx >= 0 && tabs[idx]) tabs[idx].classList.add('active');
+  if (name === 'profiles') loadProfiles();
+  if (name === 'scheduler') loadScheduler();
+  if (name === 'autostart') loadAutostart();
+  if (name === 'monitor') loadMonitor();
+  if (name === 'resources') loadResources();
+  if (name === 'logs') loadLogs();
 }
 
 // === Modal ===
@@ -641,10 +1091,45 @@ setInterval(updateClock, 1000);
 updateClock();
 
 // === DASHBOARD ===
+let _dashDistros = [];
+let _dashFilter = '';
+function filterDashCards() {
+  _dashFilter = ($('#dash-filter')?.value || '').toLowerCase();
+  renderDashCards();
+}
+function renderDashCards() {
+  const filtered = _dashDistros.filter(d => !_dashFilter || d.name.toLowerCase().includes(_dashFilter));
+  $('#cards').innerHTML = filtered.map(d => {
+    const pct = d.ram_percent ?? null;
+    const hot = pct != null && pct >= 85;
+    return `<div class="card">
+      <h3>${esc(d.name)} <span class="dot ${d.running ? 'on' : 'off'}"></span></h3>
+      <div class="row">Estado: <b>${esc(d.state)}</b>${d.default ? ' &middot; default' : ''}</div>
+      <div class="row">IP: <b>${esc(d.ip ?? '-')}</b></div>
+      <div class="row">RAM: <b>${pct != null ? pct.toFixed(0)+'%' : '-'}</b></div>
+      ${pct != null ? `<div class="bar"><div class="${hot ? 'hot' : ''}" style="width:${Math.min(100,pct)}%"></div></div>` : ''}
+      <div class="btns">
+        ${d.running
+          ? `<button class="btn btn-danger btn-sm" onclick="act('stop','${esc(d.name)}')">Detener</button>
+             <button class="btn btn-sm" onclick="act('restart','${esc(d.name)}')">Reiniciar</button>
+             <button class="btn btn-blue btn-sm" onclick="act('snapshot','${esc(d.name)}')">Snapshot</button>`
+          : `<button class="btn btn-ok btn-sm" onclick="act('start','${esc(d.name)}')">Iniciar</button>`}
+      </div>
+      <div class="btns" style="margin-top:4px">
+        <button class="btn btn-sm" onclick="distroAction('shell','${esc(d.name)}')">Terminal</button>
+        <button class="btn btn-sm" onclick="distroAction('explorer','${esc(d.name)}')">Explorador</button>
+        <button class="btn btn-sm" onclick="distroAction('export','${esc(d.name)}')">Exportar</button>
+        <button class="btn btn-sm" onclick="openCloneModal('${esc(d.name)}')">Clonar</button>
+      </div>
+    </div>`;
+  }).join('') || '<div class="card"><span class="muted">Sin distros detectadas</span></div>';
+}
+
 async function loadDashboard() {
   try {
     const st = await api('/api/status');
     const distros = st.distros || [];
+    _dashDistros = distros;
     const running = distros.filter(d => d.running).length;
     const total = distros.length;
 
@@ -655,24 +1140,7 @@ async function loadDashboard() {
       <div class="stat-card"><div class="label">Alertas</div><div class="value red" id="alert-count">-</div></div>
     `;
 
-    $('#cards').innerHTML = distros.map(d => {
-      const pct = d.ram_percent ?? null;
-      const hot = pct != null && pct >= 85;
-      return `<div class="card">
-        <h3>${esc(d.name)} <span class="dot ${d.running ? 'on' : 'off'}"></span></h3>
-        <div class="row">Estado: <b>${esc(d.state)}</b>${d.default ? ' &middot; default' : ''}</div>
-        <div class="row">IP: <b>${esc(d.ip ?? '-')}</b></div>
-        <div class="row">RAM: <b>${pct != null ? pct.toFixed(0)+'%' : '-'}</b></div>
-        ${pct != null ? `<div class="bar"><div class="${hot ? 'hot' : ''}" style="width:${Math.min(100,pct)}%"></div></div>` : ''}
-        <div class="btns">
-          ${d.running
-            ? `<button class="btn btn-danger btn-sm" onclick="act('stop','${esc(d.name)}')">Detener</button>
-               <button class="btn btn-sm" onclick="act('restart','${esc(d.name)}')">Reiniciar</button>
-               <button class="btn btn-blue btn-sm" onclick="act('snapshot','${esc(d.name)}')">Snapshot</button>`
-            : `<button class="btn btn-ok btn-sm" onclick="act('start','${esc(d.name)}')">Iniciar</button>`}
-        </div>
-      </div>`;
-    }).join('') || '<div class="card"><span class="muted">Sin distros detectadas</span></div>';
+    renderDashCards();
 
     const m = await api('/api/metrics');
     $('#metrics tbody').innerHTML = (m.metrics || []).map(x => `<tr>
@@ -688,17 +1156,70 @@ async function loadDashboard() {
     const alerts = al.alerts || [];
     if ($('#alert-count')) $('#alert-count').textContent = alerts.length;
     $('#alerts').innerHTML = alerts.length ? alerts.slice(0, 10).map(a =>
-      `<div class="alert"><div><b>${esc(a.tipo)}</b> — ${esc(a.message)}</div><span class="muted">${new Date(a.ts*1000).toLocaleTimeString()}</span></div>`
+      `<div class="alert"><div><b>${esc(a.tipo)}</b> &mdash; ${esc(a.message)}</div><span class="muted">${new Date(a.ts*1000).toLocaleTimeString()}</span></div>`
     ).join('') : '<span class="muted">sin alertas</span>';
   } catch(e) { console.error('dashboard error:', e); }
 }
 
 async function act(action, name) {
+  toast('Iniciando ' + action + '...');
   try {
     await api('/api/distros/' + encodeURIComponent(name) + '/' + action, 'POST');
     toast(name + ': ' + action + ' OK');
-  } catch(e) { toast(action + ' ' + name + ': ' + e.message, true); }
+  } catch(e) { toast('Error: ' + e.message, true); }
   setTimeout(loadAll, 800);
+}
+
+async function distroAction(action, name) {
+  toast('Iniciando ' + action + '...');
+  try {
+    await api('/api/distros/' + encodeURIComponent(name) + '/' + action, 'POST');
+    if (action === 'export') toast('Exportado a escritorio');
+    else toast(action + ' OK para ' + name);
+  } catch(e) { toast('Error: ' + e.message, true); }
+  setTimeout(loadAll, 800);
+}
+
+function openCloneModal(name) {
+  $('#clone-source').textContent = name;
+  $('#clone-source').dataset.name = name;
+  $('#clone-target-name').value = name + '-copia';
+  openModal('clone-modal');
+}
+
+async function doClone() {
+  const source = $('#clone-source').dataset.name;
+  const target = $('#clone-target-name').value.trim();
+  if (!target) { toast('Nombre requerido', true); return; }
+  toast('Clonando ' + source + '...');
+  try {
+    await api('/api/distros/' + encodeURIComponent(source) + '/clone', 'POST', { target_name: target });
+    toast('Clonada como "' + target + '" OK');
+    closeModal('clone-modal');
+  } catch(e) { toast('Error: ' + e.message, true); }
+  setTimeout(loadAll, 1500);
+}
+
+function startAll() {
+  confirmAction('Iniciar todas', '\u00bfIniciar todas las distros?', async () => {
+    toast('Iniciando todas las distros...');
+    try {
+      const r = await api('/api/start-all', 'POST');
+      toast('Iniciadas: ' + (r.started || []).length + ' distros');
+    } catch(e) { toast('Error: ' + e.message, true); }
+    setTimeout(loadAll, 1500);
+  });
+}
+
+function shutdownAll() {
+  confirmAction('Detener todas', '\u00bfDetener todas las distros en ejecucion?', async () => {
+    toast('Deteniendo todas las distros...');
+    try {
+      await api('/api/shutdown', 'POST');
+      toast('Todas las distros detenidas');
+    } catch(e) { toast('Error: ' + e.message, true); }
+    setTimeout(loadAll, 1500);
+  });
 }
 
 // === FORWARDS ===
@@ -725,6 +1246,7 @@ async function loadForwards() {
         ${f.active
           ? `<button class="btn btn-warn btn-sm" onclick="fwdAct('stop','${esc(f.name)}')">Detener</button>`
           : `<button class="btn btn-ok btn-sm" onclick="fwdAct('start','${esc(f.name)}')">Iniciar</button>`}
+        <button class="btn btn-blue btn-sm" onclick="editFwd('${esc(f.name)}')">Editar</button>
         <button class="btn btn-danger btn-sm" onclick="fwdRemove('${esc(f.name)}')">Eliminar</button>
       </td>
     </tr>`).join('') : '<tr><td colspan="7" class="muted" style="text-align:center;padding:24px">Sin forwards configurados. Haz clic en "+ Agregar" para crear uno.</td></tr>';
@@ -732,39 +1254,74 @@ async function loadForwards() {
 }
 
 async function fwdAct(action, name) {
+  toast('Iniciando forward...');
   try {
     await api('/api/forwards/' + encodeURIComponent(name) + '/' + action, 'POST');
     toast('Forward ' + name + ': ' + action + ' OK');
-  } catch(e) { toast('forward ' + action + ': ' + e.message, true); }
+  } catch(e) { toast('Error: ' + e.message, true); }
   setTimeout(loadAll, 800);
 }
 
 function fwdRemove(name) {
-  confirmAction('Eliminar Forward', '¿Eliminar el forward "' + name + '"?', async () => {
+  confirmAction('Eliminar Forward', '\u00bfEliminar el forward "' + name + '"?', async () => {
+    toast('Eliminando forward...');
     try {
       await api('/api/forwards/' + encodeURIComponent(name) + '/remove', 'POST');
       toast('Forward ' + name + ' eliminado');
-    } catch(e) { toast('error: ' + e.message, true); }
+    } catch(e) { toast('Error: ' + e.message, true); }
     setTimeout(loadAll, 800);
   });
 }
 
+function editFwd(name) {
+  api('/api/forwards').then(fw => {
+    const f = (fw.forwards || []).find(x => x.name === name);
+    if (!f) { toast('Forward no encontrado', true); return; }
+    $('#edit-fwd-name').value = f.name;
+    $('#edit-fwd-local-port').value = f.local_port;
+    $('#edit-fwd-wsl-port').value = f.wsl_port;
+    $('#edit-fwd-wsl-ip').value = f.wsl_ip || '127.0.0.1';
+    $('#edit-fwd-enabled').checked = f.enabled;
+    openModal('edit-fwd-modal');
+  }).catch(e => toast('Error: ' + e.message, true));
+}
+
+async function saveFwdEdit() {
+  const name = $('#edit-fwd-name').value;
+  toast('Guardando forward...');
+  try {
+    await api('/api/forwards/' + encodeURIComponent(name) + '/remove', 'POST');
+    await api('/api/forwards', 'POST', {
+      name,
+      local_port: parseInt($('#edit-fwd-local-port').value),
+      wsl_port: parseInt($('#edit-fwd-wsl-port').value),
+      wsl_ip: $('#edit-fwd-wsl-ip').value || '127.0.0.1',
+      enabled: $('#edit-fwd-enabled').checked,
+    });
+    toast('Forward "' + name + '" actualizado');
+    closeModal('edit-fwd-modal');
+  } catch(e) { toast('Error: ' + e.message, true); }
+  setTimeout(loadAll, 800);
+}
+
 function fwdApplyAll() {
-  confirmAction('Aplicar todos', '¿Aplicar todas las reglas netsh para forwards habilitados?', async () => {
+  confirmAction('Aplicar todos', '\u00bfAplicar todas las reglas netsh para forwards habilitados?', async () => {
+    toast('Aplicando forwards...');
     try {
       const r = await api('/api/forwards/apply-all', 'POST');
       toast('Aplicados: ' + r.applied + '/' + r.total);
-    } catch(e) { toast('error: ' + e.message, true); }
+    } catch(e) { toast('Error: ' + e.message, true); }
     setTimeout(loadAll, 800);
   });
 }
 
 function fwdClearAll() {
-  confirmAction('Limpiar todo', '¿Eliminar TODAS las reglas netsh? Esto es destructivo.', async () => {
+  confirmAction('Limpiar todo', '\u00bfEliminar TODAS las reglas netsh? Esto es destructivo.', async () => {
+    toast('Limpiando forwards...');
     try {
       const r = await api('/api/forwards/clear-all', 'POST');
       toast('Limpiados: ' + r.cleared + ' forwards');
-    } catch(e) { toast('error: ' + e.message, true); }
+    } catch(e) { toast('Error: ' + e.message, true); }
     setTimeout(loadAll, 800);
   });
 }
@@ -772,6 +1329,7 @@ function fwdClearAll() {
 async function addForward() {
   const name = $('#fwd-name').value.trim();
   if (!name) { toast('El nombre es obligatorio', true); return; }
+  toast('Agregando forward...');
   const fd = new FormData();
   fd.append('name', name);
   fd.append('local_port', $('#fwd-local-port').value);
@@ -780,14 +1338,13 @@ async function addForward() {
   fd.append('enabled', $('#fwd-enabled').checked);
   try {
     await api('/api/forwards', 'POST', fd);
-    toast('Forward "' + name + '" agregado');
+    toast('Forward "' + name + '" agregado OK');
     closeModal('add-fwd-modal');
-    // Reset form
     $('#fwd-name').value = '';
     $('#fwd-local-port').value = '8080';
     $('#fwd-wsl-port').value = '80';
     $('#fwd-wsl-ip').value = '127.0.0.1';
-  } catch(e) { toast('error: ' + e.message, true); }
+  } catch(e) { toast('Error: ' + e.message, true); }
   setTimeout(loadAll, 800);
 }
 
@@ -817,6 +1374,7 @@ async function loadTunnels() {
         ${t.active
           ? `<button class="btn btn-warn btn-sm" onclick="tunAct('stop','${esc(t.name)}')">Detener</button>`
           : `<button class="btn btn-ok btn-sm" onclick="tunAct('start','${esc(t.name)}')">Iniciar</button>`}
+        <button class="btn btn-blue btn-sm" onclick="editTun('${esc(t.name)}')">Editar</button>
         <button class="btn btn-danger btn-sm" onclick="tunRemove('${esc(t.name)}')">Eliminar</button>
       </td>
     </tr>`).join('') : '<tr><td colspan="9" class="muted" style="text-align:center;padding:24px">Sin tunnels configurados. Haz clic en "+ Agregar" para crear uno.</td></tr>';
@@ -824,26 +1382,66 @@ async function loadTunnels() {
 }
 
 async function tunAct(action, name) {
+  toast('Iniciando tunnel...');
   try {
     await api('/api/tunnels/' + encodeURIComponent(name) + '/' + action, 'POST');
     toast('Tunnel ' + name + ': ' + action + ' OK');
-  } catch(e) { toast('tunnel ' + action + ': ' + e.message, true); }
+  } catch(e) { toast('Error: ' + e.message, true); }
   setTimeout(loadAll, 800);
 }
 
 function tunRemove(name) {
-  confirmAction('Eliminar Tunnel', '¿Eliminar el tunnel "' + name + '"?', async () => {
+  confirmAction('Eliminar Tunnel', '\u00bfEliminar el tunnel "' + name + '"?', async () => {
+    toast('Eliminando tunnel...');
     try {
       await api('/api/tunnels/' + encodeURIComponent(name) + '/remove', 'POST');
       toast('Tunnel ' + name + ' eliminado');
-    } catch(e) { toast('error: ' + e.message, true); }
+    } catch(e) { toast('Error: ' + e.message, true); }
     setTimeout(loadAll, 800);
   });
+}
+
+function editTun(name) {
+  api('/api/tunnels').then(tn => {
+    const t = (tn.tunnels || []).find(x => x.name === name);
+    if (!t) { toast('Tunnel no encontrado', true); return; }
+    $('#edit-tun-name').value = t.name;
+    $('#edit-tun-remote-host').value = t.remote_host;
+    $('#edit-tun-remote-port').value = t.remote_port;
+    $('#edit-tun-local-port').value = t.local_port;
+    $('#edit-tun-ssh-user').value = t.ssh_user || 'root';
+    $('#edit-tun-ssh-host').value = t.ssh_host || '';
+    $('#edit-tun-auto').checked = t.auto_reconnect;
+    $('#edit-tun-enabled').checked = t.enabled;
+    openModal('edit-tun-modal');
+  }).catch(e => toast('Error: ' + e.message, true));
+}
+
+async function saveTunEdit() {
+  const name = $('#edit-tun-name').value;
+  toast('Guardando tunnel...');
+  try {
+    await api('/api/tunnels/' + encodeURIComponent(name) + '/remove', 'POST');
+    const fd = new FormData();
+    fd.append('name', name);
+    fd.append('remote_host', $('#edit-tun-remote-host').value);
+    fd.append('remote_port', $('#edit-tun-remote-port').value);
+    fd.append('local_port', $('#edit-tun-local-port').value);
+    fd.append('ssh_user', $('#edit-tun-ssh-user').value);
+    fd.append('ssh_host', $('#edit-tun-ssh-host').value);
+    fd.append('auto_reconnect', $('#edit-tun-auto').checked);
+    fd.append('enabled', $('#edit-tun-enabled').checked);
+    await api('/api/tunnels', 'POST', fd);
+    toast('Tunnel "' + name + '" actualizado');
+    closeModal('edit-tun-modal');
+  } catch(e) { toast('Error: ' + e.message, true); }
+  setTimeout(loadAll, 800);
 }
 
 async function addTunnel() {
   const name = $('#tun-name').value.trim();
   if (!name) { toast('El nombre es obligatorio', true); return; }
+  toast('Agregando tunnel...');
   const fd = new FormData();
   fd.append('name', name);
   fd.append('remote_host', $('#tun-remote-host').value);
@@ -855,20 +1453,19 @@ async function addTunnel() {
   fd.append('enabled', $('#tun-enabled').checked);
   try {
     await api('/api/tunnels', 'POST', fd);
-    toast('Tunnel "' + name + '" agregado');
+    toast('Tunnel "' + name + '" agregado OK');
     closeModal('add-tun-modal');
-    // Reset form
     $('#tun-name').value = '';
     $('#tun-remote-host').value = '';
     $('#tun-remote-port').value = '22';
     $('#tun-local-port').value = '2222';
     $('#tun-ssh-user').value = 'root';
     $('#tun-ssh-host').value = '';
-  } catch(e) { toast('error: ' + e.message, true); }
+  } catch(e) { toast('Error: ' + e.message, true); }
   setTimeout(loadAll, 800);
 }
 
-// === PUBLISH (VPS) ===
+// === VPS ===
 let connectVpsId = null;
 
 async function loadPublish() {
@@ -879,11 +1476,9 @@ async function loadPublish() {
     const tnResp = await api('/api/tunnels');
     const allTunnels = tnResp.tunnels || [];
 
-    // Get VPS hosts for matching
     const vpsHosts = {};
     vpsList.forEach(v => { vpsHosts[v.host] = v.id; });
 
-    // Filter tunnels that belong to VPS
     const pubTunnels = allTunnels.filter(t => vpsHosts[t.ssh_host] || vpsHosts[t.remote_host]);
 
     $('#publish-stats').innerHTML = `
@@ -892,7 +1487,6 @@ async function loadPublish() {
       <div class="stat-card"><div class="label">Tunnels Totales</div><div class="value orange">${pubTunnels.length}</div></div>
     `;
 
-    // VPS table
     $('#vps-table tbody').innerHTML = vpsList.length ? vpsList.map(v => {
       const tuns = allTunnels.filter(t => t.ssh_host === v.host || t.remote_host === v.host);
       const activeTuns = tuns.filter(t => t.active).length;
@@ -906,12 +1500,12 @@ async function loadPublish() {
         <td>
           <button class="btn btn-blue btn-sm" onclick="openConnectVps('${esc(v.id)}')">Conectar</button>
           <button class="btn btn-warn btn-sm" onclick="disconnectVps('${esc(v.id)}')">Desconectar</button>
+          <button class="btn btn-blue btn-sm" onclick="editVps('${esc(v.id)}')">Editar</button>
           <button class="btn btn-danger btn-sm" onclick="removeVps('${esc(v.id)}')">Eliminar</button>
         </td>
       </tr>`;
     }).join('') : '<tr><td colspan="7" class="muted" style="text-align:center;padding:24px">Sin VPS configurados. Haz clic en "+ Agregar VPS" para crear uno.</td></tr>';
 
-    // Publish tunnels table
     $('#pub-tun-table tbody').innerHTML = pubTunnels.length ? pubTunnels.map(t => {
       const vpsId = vpsHosts[t.ssh_host] || vpsHosts[t.remote_host] || '?';
       return `<tr>
@@ -929,7 +1523,7 @@ async function loadPublish() {
         </td>
       </tr>`;
     }).join('') : '<tr><td colspan="7" class="muted" style="text-align:center;padding:24px">Sin tunnels activos para VPS.</td></tr>';
-  } catch(e) { console.error('publish error:', e); }
+  } catch(e) { console.error('vps error:', e); }
 }
 
 async function addVps() {
@@ -937,6 +1531,7 @@ async function addVps() {
   if (!id) { toast('El ID es obligatorio', true); return; }
   const host = $('#vps-host').value.trim();
   if (!host) { toast('El host es obligatorio', true); return; }
+  toast('Agregando VPS...');
   try {
     await api('/api/vps', 'POST', {
       id, host,
@@ -944,25 +1539,57 @@ async function addVps() {
       port: parseInt($('#vps-port').value) || 22,
       identity_file: $('#vps-identity').value || '',
     });
-    toast('VPS "' + id + '" agregado');
+    toast('VPS "' + id + '" agregado OK');
     closeModal('add-vps-modal');
     $('#vps-id').value = '';
     $('#vps-host').value = '';
     $('#vps-user').value = 'root';
     $('#vps-port').value = '22';
     $('#vps-identity').value = '';
-  } catch(e) { toast('error: ' + e.message, true); }
+  } catch(e) { toast('Error: ' + e.message, true); }
   setTimeout(loadAll, 800);
 }
 
 function removeVps(id) {
-  confirmAction('Eliminar VPS', '¿Eliminar el VPS "' + id + '"?', async () => {
+  confirmAction('Eliminar VPS', '\u00bfEliminar el VPS "' + id + '"?', async () => {
+    toast('Eliminando VPS...');
     try {
       await api('/api/vps/' + encodeURIComponent(id), 'DELETE');
       toast('VPS ' + id + ' eliminado');
-    } catch(e) { toast('error: ' + e.message, true); }
+    } catch(e) { toast('Error: ' + e.message, true); }
     setTimeout(loadAll, 800);
   });
+}
+
+function editVps(id) {
+  api('/api/vps').then(resp => {
+    const v = (resp.vps || []).find(x => x.id === id);
+    if (!v) { toast('VPS no encontrado', true); return; }
+    $('#edit-vps-id').value = v.id;
+    $('#edit-vps-host').value = v.host;
+    $('#edit-vps-user').value = v.user || 'root';
+    $('#edit-vps-port').value = v.port || 22;
+    $('#edit-vps-identity').value = v.identity_file || '';
+    openModal('edit-vps-modal');
+  }).catch(e => toast('Error: ' + e.message, true));
+}
+
+async function saveVpsEdit() {
+  const id = $('#edit-vps-id').value;
+  toast('Guardando VPS...');
+  try {
+    await api('/api/vps/' + encodeURIComponent(id), 'DELETE');
+    await api('/api/vps', 'POST', {
+      id,
+      host: $('#edit-vps-host').value,
+      user: $('#edit-vps-user').value || 'root',
+      port: parseInt($('#edit-vps-port').value) || 22,
+      identity_file: $('#edit-vps-identity').value || '',
+    });
+    toast('VPS "' + id + '" actualizado');
+    closeModal('edit-vps-modal');
+  } catch(e) { toast('Error: ' + e.message, true); }
+  setTimeout(loadAll, 800);
 }
 
 function openConnectVps(id) {
@@ -973,26 +1600,418 @@ function openConnectVps(id) {
 
 async function connectVps() {
   if (!connectVpsId) return;
+  toast('Abriendo tunnel...');
   try {
     await api('/api/vps/' + encodeURIComponent(connectVpsId) + '/connect', 'POST', {
       name: $('#pub-tun-name').value || 'pub-' + connectVpsId,
       remote_port: parseInt($('#pub-tun-remote-port').value) || 80,
       local_port: parseInt($('#pub-tun-local-port').value) || 8080,
     });
-    toast('Tunnel al VPS ' + connectVpsId + ' abierto');
+    toast('Tunnel al VPS ' + connectVpsId + ' abierto OK');
     closeModal('connect-vps-modal');
-  } catch(e) { toast('error: ' + e.message, true); }
+  } catch(e) { toast('Error: ' + e.message, true); }
   setTimeout(loadAll, 800);
 }
 
 async function disconnectVps(id) {
-  confirmAction('Desconectar VPS', '¿Cerrar todos los tunnels del VPS "' + id + '"?', async () => {
+  confirmAction('Desconectar VPS', '\u00bfCerrar todos los tunnels del VPS "' + id + '"?', async () => {
+    toast('Desconectando VPS...');
     try {
       const r = await api('/api/vps/' + encodeURIComponent(id) + '/disconnect', 'POST');
       toast(r.closed + ' tunnel(s) cerrado(s)');
-    } catch(e) { toast('error: ' + e.message, true); }
+    } catch(e) { toast('Error: ' + e.message, true); }
     setTimeout(loadAll, 800);
   });
+}
+
+// === PROFILES ===
+let _selectedProfile = null;
+
+async function loadProfiles() {
+  try {
+    const r = await api('/api/profiles');
+    const profiles = r.profiles || [];
+    $('#profiles-table tbody').innerHTML = profiles.length ? profiles.map(p =>
+      `<tr onclick="selectProfile('${esc(p.name)}')" style="cursor:pointer;${_selectedProfile===p.name?'background:#1f2a3a':''}">
+        <td><b>${esc(p.name)}</b></td>
+        <td>${esc(p.description || '-')}</td>
+        <td>${(p.distros_to_start || []).join(', ') || '-'}</td>
+        <td>${p.active ? '<span class="dot on"></span> Activo' : '<span class="dot off"></span>'}</td>
+      </tr>`
+    ).join('') : '<tr><td colspan="4" class="muted" style="text-align:center;padding:24px">Sin perfiles. Haz clic en "Capturar" para crear uno.</td></tr>';
+  } catch(e) { console.error('profiles error:', e); }
+}
+
+function selectProfile(name) {
+  _selectedProfile = name;
+  loadProfiles();
+}
+
+async function captureProfile() {
+  const name = $('#profile-capture-name').value.trim();
+  if (!name) { toast('Nombre requerido', true); return; }
+  toast('Capturando perfil...');
+  try {
+    await api('/api/profiles/capture', 'POST', {
+      name,
+      description: $('#profile-capture-desc').value || '',
+    });
+    toast('Perfil "' + name + '" capturado OK');
+    closeModal('capture-profile-modal');
+    $('#profile-capture-name').value = '';
+    $('#profile-capture-desc').value = '';
+    loadProfiles();
+  } catch(e) { toast('Error: ' + e.message, true); }
+}
+
+async function editProfile() {
+  if (!_selectedProfile) { toast('Selecciona un perfil primero', true); return; }
+  try {
+    const r = await api('/api/profiles');
+    const profiles = r.profiles || [];
+    const p = profiles.find(x => x.name === _selectedProfile);
+    if (!p) { toast('Perfil no encontrado', true); return; }
+    $('#profile-edit-name').value = p.name;
+    $('#profile-edit-desc').value = p.description || '';
+    const st = await api('/api/status');
+    const allDistros = (st.distros || []).map(d => d.name);
+    const selected = p.distros_to_start || [];
+    $('#profile-edit-distros').innerHTML = allDistros.map(d =>
+      `<div class="toggle"><input type="checkbox" class="profile-distro-cb" value="${esc(d)}" ${selected.includes(d)?'checked':''}><span>${esc(d)}</span></div>`
+    ).join('') || '<span class="muted">No hay distros disponibles</span>';
+    openModal('edit-profile-modal');
+  } catch(e) { toast('Error: ' + e.message, true); }
+}
+
+async function saveProfileEdit() {
+  const name = $('#profile-edit-name').value.trim();
+  if (!name) { toast('Nombre requerido', true); return; }
+  const distros = Array.from($$('.profile-distro-cb:checked')).map(cb => cb.value);
+  toast('Guardando perfil...');
+  try {
+    await api('/api/profiles/edit', 'POST', {
+      name,
+      description: $('#profile-edit-desc').value || '',
+      distros_to_start: distros,
+    });
+    toast('Perfil "' + name + '" guardado OK');
+    closeModal('edit-profile-modal');
+    loadProfiles();
+  } catch(e) { toast('Error: ' + e.message, true); }
+}
+
+function applyProfile() {
+  if (!_selectedProfile) { toast('Selecciona un perfil primero', true); return; }
+  confirmAction('Aplicar Perfil', '\u00bfAplicar el perfil "' + _selectedProfile + '"? Se iniciaran/distopran las distros segun el perfil.', async () => {
+    toast('Aplicando perfil...');
+    try {
+      await api('/api/profiles/apply/' + encodeURIComponent(_selectedProfile), 'POST');
+      toast('Perfil "' + _selectedProfile + '" aplicado OK');
+    } catch(e) { toast('Error: ' + e.message, true); }
+    setTimeout(loadAll, 2000);
+  });
+}
+
+// === SCHEDULER ===
+let _selectedTask = null;
+
+async function loadScheduler() {
+  try {
+    const r = await api('/api/schedule');
+    const tasks = r.tasks || [];
+    $('#scheduler-table tbody').innerHTML = tasks.length ? tasks.map(t => {
+      const days = (t.schedule?.days || []).join(', ');
+      const target = t.action?.distro || t.action?.profile || '-';
+      return `<tr onclick="selectTask('${esc(t.id)}')" style="cursor:pointer;${_selectedTask===t.id?'background:#1f2a3a':''}">
+        <td class="muted">${esc(t.id)}</td>
+        <td><b>${esc(t.name)}</b></td>
+        <td>${esc(t.action?.type || '-')}</td>
+        <td>${esc(target)}</td>
+        <td>${esc(t.schedule?.time || '-')}</td>
+        <td class="muted">${esc(days)}</td>
+        <td>${t.enabled ? '<span style="color:#2ecc71">Si</span>' : '<span style="color:#e74c3c">No</span>'}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="7" class="muted" style="text-align:center;padding:24px">Sin tareas programadas. Haz clic en "Nueva tarea" para crear una.</td></tr>';
+  } catch(e) { console.error('scheduler error:', e); }
+}
+
+function selectTask(id) {
+  _selectedTask = id;
+  loadScheduler();
+}
+
+function openSchedulerModal() {
+  $('#scheduler-modal-title').textContent = 'Nueva Tarea';
+  $('#sched-edit-id').value = '';
+  $('#sched-name').value = '';
+  $('#sched-action-type').value = 'distro_start';
+  $('#sched-target').value = '';
+  $$('.sched-day').forEach(cb => {
+    const day = cb.value;
+    cb.checked = ['mon','tue','wed','thu','fri'].includes(day);
+  });
+  $('#sched-enabled').checked = true;
+  openModal('scheduler-modal');
+}
+
+async function editSchedulerTask() {
+  if (!_selectedTask) { toast('Selecciona una tarea primero', true); return; }
+  try {
+    const r = await api('/api/schedule');
+    const task = (r.tasks || []).find(t => t.id === _selectedTask);
+    if (!task) { toast('Tarea no encontrada', true); return; }
+    $('#scheduler-modal-title').textContent = 'Editar Tarea';
+    $('#sched-edit-id').value = task.id;
+    $('#sched-name').value = task.name || '';
+    $('#sched-action-type').value = task.action?.type || 'distro_start';
+    $('#sched-target').value = task.action?.distro || task.action?.profile || '';
+    const days = task.schedule?.days || [];
+    $$('.sched-day').forEach(cb => { cb.checked = days.includes(cb.value); });
+    $('#sched-time').value = task.schedule?.time || '09:00';
+    $('#sched-enabled').checked = task.enabled;
+    openModal('scheduler-modal');
+  } catch(e) { toast('Error: ' + e.message, true); }
+}
+
+async function saveSchedulerTask() {
+  const editId = $('#sched-edit-id').value;
+  const name = $('#sched-name').value.trim();
+  if (!name) { toast('Nombre requerido', true); return; }
+  const actionType = $('#sched-action-type').value;
+  const target = $('#sched-target').value.trim();
+  const days = Array.from($$('.sched-day:checked')).map(cb => cb.value);
+  if (!days.length) { toast('Selecciona al menos un dia', true); return; }
+
+  const payload = {
+    name,
+    action_type: actionType,
+    distro: (actionType === 'apply_profile') ? null : target || null,
+    profile: (actionType === 'apply_profile') ? target || null : null,
+    time: $('#sched-time').value || '09:00',
+    days,
+    enabled: $('#sched-enabled').checked,
+  };
+
+  toast(editId ? 'Actualizando tarea...' : 'Creando tarea...');
+  try {
+    if (editId) {
+      await api('/api/schedule/' + editId, 'DELETE');
+    }
+    await api('/api/schedule', 'POST', payload);
+    toast('Tarea "' + name + '" guardada OK');
+    closeModal('scheduler-modal');
+    loadScheduler();
+  } catch(e) { toast('Error: ' + e.message, true); }
+}
+
+function removeSchedulerTask() {
+  if (!_selectedTask) { toast('Selecciona una tarea primero', true); return; }
+  confirmAction('Eliminar tarea', '\u00bfEliminar esta tarea programada?', async () => {
+    toast('Eliminando tarea...');
+    try {
+      await api('/api/schedule/' + _selectedTask, 'DELETE');
+      toast('Tarea eliminada OK');
+      _selectedTask = null;
+      loadScheduler();
+    } catch(e) { toast('Error: ' + e.message, true); }
+  });
+}
+
+async function runSchedulerTask() {
+  if (!_selectedTask) { toast('Selecciona una tarea primero', true); return; }
+  toast('Ejecutando tarea...');
+  try {
+    await api('/api/schedule/' + _selectedTask + '/run', 'POST');
+    toast('Tarea ejecutada OK');
+  } catch(e) { toast('Error: ' + e.message, true); }
+  setTimeout(loadAll, 1500);
+}
+
+// === AUTOSTART ===
+let _selectedAutostart = null;
+
+async function loadAutostart() {
+  try {
+    const r = await api('/api/autostart');
+    const items = r.autostart || {};
+    const entries = Object.entries(items);
+    const st = await api('/api/status');
+    const allDistros = (st.distros || []).map(d => d.name);
+    const activeDistros = entries.map(([k]) => k);
+    const available = allDistros.filter(d => !activeDistros.includes(d));
+    const sel = $('#autostart-distro');
+    if (sel) {
+      sel.innerHTML = available.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('') || '<option value="">(ninguna disponible)</option>';
+    }
+
+    $('#autostart-table tbody').innerHTML = entries.length ? entries.map(([distro, info]) =>
+      `<tr onclick="selectAutostart('${esc(distro)}')" style="cursor:pointer;${_selectedAutostart===distro?'background:#1f2a3a':''}">
+        <td><b>${esc(distro)}</b></td>
+        <td>${info.delay_s ?? 0}s</td>
+        <td class="muted" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(info.command || '')}">${esc(info.command || '-')}</td>
+        <td><span class="dot on"></span> Activo</td>
+      </tr>`
+    ).join('') : '<tr><td colspan="4" class="muted" style="text-align:center;padding:24px">Sin autoarranque configurado.</td></tr>';
+  } catch(e) { console.error('autostart error:', e); }
+}
+
+function selectAutostart(distro) {
+  _selectedAutostart = distro;
+  loadAutostart();
+}
+
+async function enableAutostart() {
+  const distro = $('#autostart-distro').value;
+  if (!distro) { toast('Selecciona una distro', true); return; }
+  const delay = parseInt($('#autostart-delay').value) || 0;
+  toast('Activando autoarranque...');
+  try {
+    await api('/api/autostart', 'POST', { distro, delay_s: delay });
+    toast('Autoarranque activado para ' + distro);
+    closeModal('add-autostart-modal');
+    loadAutostart();
+  } catch(e) { toast('Error: ' + e.message, true); }
+}
+
+async function editAutostart() {
+  if (!_selectedAutostart) { toast('Selecciona una distro primero', true); return; }
+  const r = await api('/api/autostart');
+  const items = r.autostart || {};
+  const info = items[_selectedAutostart];
+  if (!info) { toast('No encontrado', true); return; }
+  $('#edit-autostart-distro').value = _selectedAutostart;
+  $('#edit-autostart-delay').value = info.delay_s || 0;
+  openModal('edit-autostart-modal');
+}
+
+async function saveAutostartEdit() {
+  const distro = $('#edit-autostart-distro').value;
+  const delay = parseInt($('#edit-autostart-delay').value) || 0;
+  toast('Actualizando autoarranque...');
+  try {
+    await api('/api/autostart/' + encodeURIComponent(distro) + '/edit', 'POST', { delay_s: delay });
+    toast('Autoarranque actualizado OK');
+    closeModal('edit-autostart-modal');
+    loadAutostart();
+  } catch(e) { toast('Error: ' + e.message, true); }
+}
+
+function disableAutostart() {
+  if (!_selectedAutostart) { toast('Selecciona una distro primero', true); return; }
+  confirmAction('Desactivar Autoarranque', '\u00bfDesactivar autoarranque para "' + _selectedAutostart + '"?', async () => {
+    toast('Desactivando autoarranque...');
+    try {
+      await api('/api/autostart/' + encodeURIComponent(_selectedAutostart) + '/disable', 'POST');
+      toast('Autoarranque desactivado');
+      _selectedAutostart = null;
+      loadAutostart();
+    } catch(e) { toast('Error: ' + e.message, true); }
+  });
+}
+
+// === MONITOR ===
+async function loadMonitor() {
+  try {
+    const m = await api('/api/metrics');
+    const metrics = m.metrics || [];
+    const running = metrics.filter(x => x.running);
+    const totalRam = metrics.reduce((s, x) => s + (x.ram_total_mb || 0), 0);
+    const totalCpus = metrics.reduce((s, x) => s + (x.cpus || 0), 0);
+
+    $('#monitor-stats').innerHTML = `
+      <div class="stat-card"><div class="label">Distro ejecutando</div><div class="value green">${running.length}</div></div>
+      <div class="stat-card"><div class="label">RAM Total</div><div class="value blue">${fmtRam(totalRam)}</div></div>
+      <div class="stat-card"><div class="label">CPU Total</div><div class="value orange">${totalCpus}</div></div>
+    `;
+
+    $('#monitor-table tbody').innerHTML = metrics.length ? metrics.map(x => {
+      const pct = x.ram_percent != null;
+      return `<tr>
+        <td>${esc(x.name)}</td>
+        <td><span class="dot ${x.running ? 'on' : 'off'}"></span>${x.running ? 'RUN' : 'STOP'}</td>
+        <td>${fmtRam(x.ram_used_mb)} / ${fmtRam(x.ram_total_mb)}</td>
+        <td>${pct ? x.ram_percent.toFixed(0)+'%' : '-'}</td>
+        <td>${x.cpus ?? '-'}</td>
+        <td>${uptime(x.uptime_s)}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="6" class="muted">sin metricas</td></tr>';
+  } catch(e) { console.error('monitor error:', e); }
+}
+
+// === RESOURCES ===
+async function loadResources() {
+  try {
+    const r = await api('/api/limits/global');
+    const l = r.limits || {};
+    $('#res-memory').value = l.memory_gb ?? '';
+    $('#res-processors').value = l.processors ?? '';
+    $('#res-swap').value = l.swap_gb ?? '';
+    $('#res-auto-reclaim').value = l.auto_memory_reclaim ?? '';
+    $('#res-sparse-vhd').checked = !!l.sparse_vhd;
+
+    $('#resources-stats').innerHTML = `
+      <div class="stat-card"><div class="label">Memoria</div><div class="value green">${l.memory_gb != null ? l.memory_gb + ' GB' : 'Sin limite'}</div></div>
+      <div class="stat-card"><div class="label">CPUs</div><div class="value blue">${l.processors ?? 'Sin limite'}</div></div>
+      <div class="stat-card"><div class="label">Swap</div><div class="value orange">${l.swap_gb != null ? l.swap_gb + ' GB' : 'Sin limite'}</div></div>
+    `;
+  } catch(e) { console.error('resources error:', e); }
+}
+
+async function applyResources() {
+  toast('Aplicando limites...');
+  const payload = {};
+  const mem = parseFloat($('#res-memory').value);
+  const procs = parseInt($('#res-processors').value);
+  const swap = parseFloat($('#res-swap').value);
+  const reclaim = $('#res-auto-reclaim').value;
+  const sparse = $('#res-sparse-vhd').checked;
+  if (!isNaN(mem) && mem > 0) payload.memory_gb = mem;
+  if (!isNaN(procs) && procs > 0) payload.processors = procs;
+  if (!isNaN(swap) && swap >= 0) payload.swap_gb = swap;
+  if (reclaim) payload.auto_memory_reclaim = reclaim;
+  payload.sparse_vhd = sparse;
+  try {
+    await api('/api/limits/global', 'POST', payload);
+    toast('Limites aplicados OK (requiere wsl --shutdown)');
+    loadResources();
+  } catch(e) { toast('Error: ' + e.message, true); }
+}
+
+function resetResources() {
+  confirmAction('Restablecer limites', '\u00bfRestablecer todos los limites a valores por defecto?', async () => {
+    toast('Restableciendo limites...');
+    try {
+      await api('/api/limits/global', 'POST', {});
+      toast('Limites restablecidos OK');
+      loadResources();
+    } catch(e) { toast('Error: ' + e.message, true); }
+  });
+}
+
+// === LOGS ===
+async function loadLogs() {
+  try {
+    const r = await api('/api/events');
+    const events = r.events || [];
+    const types = [...new Set(events.map(e => e.tipo || e.type || ''))];
+
+    $('#logs-stats').innerHTML = `
+      <div class="stat-card"><div class="label">Total eventos</div><div class="value blue">${events.length}</div></div>
+      <div class="stat-card"><div class="label">Tipos</div><div class="value green">${types.length}</div></div>
+      <div class="stat-card"><div class="label">Ultimo evento</div><div class="value orange">${events.length ? new Date((events[0].ts || 0)*1000).toLocaleTimeString() : '-'}</div></div>
+    `;
+
+    $('#logs-container').innerHTML = events.length ? events.map(e => {
+      const ts = e.ts ? new Date(e.ts * 1000).toLocaleString() : '';
+      const tipo = e.tipo || e.type || '';
+      const target = e.target || '';
+      const msg = e.message || '';
+      const detail = e.detail || '';
+      return `<div style="border-bottom:1px solid #2a3344;padding:6px 0">
+        <span class="muted">${esc(ts)}</span> <b style="color:#3498db">${esc(tipo)}</b> ${target ? '<span style="color:#2ecc71">' + esc(target) + '</span>' : ''} &mdash; ${esc(msg)}${detail ? ' <span class="muted">' + esc(detail) + '</span>' : ''}
+      </div>`;
+    }).join('') : '<div class="muted" style="padding:20px;text-align:center">Sin eventos registrados</div>';
+  } catch(e) { console.error('logs error:', e); }
 }
 
 // === CONFIG ===
@@ -1007,16 +2026,17 @@ async function loadConfig() {
 async function saveConfig() {
   const content = $('#config-editor').value;
   try {
-    JSON.parse(content); // validate
+    JSON.parse(content);
   } catch(e) {
     toast('JSON invalido: ' + e.message, true);
     return;
   }
+  toast('Guardando configuracion...');
   try {
     await api('/api/config', 'POST', { content });
-    toast('Configuracion guardada (con backup)');
+    toast('Configuracion guardada OK (con backup)');
     $('#config-status').textContent = 'Guardado: ' + new Date().toLocaleTimeString();
-  } catch(e) { toast('error: ' + e.message, true); }
+  } catch(e) { toast('Error: ' + e.message, true); }
 }
 
 // === SETTINGS ===
@@ -1039,6 +2059,7 @@ async function loadSettings() {
     $('#set-snap-enabled').checked = s.snapshots_enabled || false;
     $('#set-snap-retention').value = s.snapshots_retention || 14;
     $('#set-web-enabled').checked = s.web_panel_enabled || false;
+    $('#set-web-password').value = s.web_password || '';
     $('#set-language').value = s.language || 'es';
   } catch(e) { console.error('settings load error:', e); }
 }
@@ -1060,13 +2081,15 @@ async function saveSettings() {
     snapshots_enabled: $('#set-snap-enabled').checked,
     snapshots_retention: parseInt($('#set-snap-retention').value) || 14,
     web_panel_enabled: $('#set-web-enabled').checked,
+    web_password: $('#set-web-password').value || 'wsl-manager',
     language: $('#set-language').value,
   };
+  toast('Guardando ajustes...');
   try {
     await api('/api/settings', 'POST', data);
-    toast('Ajustes guardados correctamente');
+    toast('Ajustes guardados OK');
     $('#settings-status').textContent = 'Guardado: ' + new Date().toLocaleTimeString();
-  } catch(e) { toast('error: ' + e.message, true); }
+  } catch(e) { toast('Error: ' + e.message, true); }
 }
 
 // === Load all ===
@@ -1075,7 +2098,6 @@ async function loadAll() {
   await loadForwards();
   await loadTunnels();
   await loadPublish();
-  // Load config/settings on demand (when page visible)
   if (currentPage === 'config') await loadConfig();
   if (currentPage === 'settings') await loadSettings();
 }
@@ -1084,13 +2106,17 @@ async function loadAll() {
 loadAll();
 setInterval(loadAll, 3000);
 
-// Load config/settings when switching to those tabs
-const origShowPage = showPage;
-// Already defined above, so we hook into page visibility
+// Auto-refresh for monitor (5s) and page-specific tabs
 setInterval(() => {
+  if (currentPage === 'monitor') loadMonitor();
+  if (currentPage === 'logs') loadLogs();
   if (currentPage === 'config') loadConfig();
   if (currentPage === 'settings') loadSettings();
-  if (currentPage === 'publish') loadPublish();
+  if (currentPage === 'vps') loadPublish();
+  if (currentPage === 'profiles') loadProfiles();
+  if (currentPage === 'scheduler') loadScheduler();
+  if (currentPage === 'autostart') loadAutostart();
+  if (currentPage === 'resources') loadResources();
 }, 5000);
 </script>
 </body>
@@ -1126,10 +2152,10 @@ LOGIN_HTML = """<!doctype html>
 <body>
 <div class="login-box">
   <h1>WSL Manager</h1>
-  <div class="sub">Ingresa el token de acceso</div>
+  <div class="sub">Ingresa tu contraseña</div>
   <div id="err" class="error" style="display:none"></div>
   <form method="POST" action="/login">
-    <input type="text" name="token" placeholder="Token de sesion" autocomplete="off" autofocus required>
+    <input type="password" name="password" placeholder="Contraseña" autocomplete="current-password" autofocus required>
     <button type="submit">Entrar</button>
   </form>
 </div>
@@ -1148,37 +2174,54 @@ def create_web_app(ctx) -> FastAPI:
     app = FastAPI(title="WSL Manager Panel", version="0.2.0")
     app.state.ctx = ctx  # type: ignore[attr-defined]
 
-    # --- Session token ---
-    web_token = secrets.token_urlsafe(16)
-    app.state.web_token = web_token  # type: ignore[attr-defined]
-    print(f"\n{'='*60}")
-    print(f"  Token de acceso del panel web: {web_token}")
-    print(f"  Copialo en: http://127.0.0.1:8790/login")
-    print(f"{'='*60}\n")
-
+    # --- Password-based auth ---
+    web_password = ctx.config.ui.web_password or "wsl-manager"
+    session_secret = secrets.token_urlsafe(16)
     apply_security_headers(app)
+
+    print(f"\n{'='*60}")
+    print(f"  Contraseña del panel web: {web_password}")
+    print(f"  Abre: http://127.0.0.1:8791")
+    print(f"{'='*60}\n")
 
     # --- Auth middleware ---
     UNAUTHENTICATED_PATHS = {"/login"}
 
+    def _check_session(request: Request) -> bool:
+        session_cookie = request.cookies.get("session")
+        if not session_cookie:
+            return False
+        # Verify HMAC-signed session cookie
+        try:
+            import hashlib, hmac
+            parts = session_cookie.split("|", 1)
+            if len(parts) != 2:
+                return False
+            payload, sig = parts
+            expected = hmac.new(session_secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+            return hmac.compare_digest(sig, expected)
+        except Exception:
+            return False
+
+    def _make_session_cookie() -> str:
+        import hashlib, hmac
+        payload = secrets.token_urlsafe(16)
+        sig = hmac.new(session_secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        return f"{payload}|{sig}"
+
     class SessionAuthMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next):
             path = request.url.path
-            # Allow unauthenticated paths and static root
             if path in UNAUTHENTICATED_PATHS:
                 return await call_next(request)
-            # Also allow POST /login (form submission)
             if path == "/login" and request.method == "POST":
                 return await call_next(request)
-            # Check session cookie
-            session_cookie = request.cookies.get("session")
-            if session_cookie != web_token:
-                # API requests get JSON 401; page requests get redirect
-                accept = request.headers.get("accept", "")
-                if "application/json" in accept or request.url.path.startswith("/api/"):
-                    return JSONResponse(status_code=401, content={"detail": "no autenticado"})
-                return RedirectResponse(url="/login", status_code=302)
-            return await call_next(request)
+            if _check_session(request):
+                return await call_next(request)
+            accept = request.headers.get("accept", "")
+            if "application/json" in accept or request.url.path.startswith("/api/"):
+                return JSONResponse(status_code=401, content={"detail": "no autenticado"})
+            return RedirectResponse(url="/login", status_code=302)
 
     app.add_middleware(SessionAuthMiddleware)
 
@@ -1187,16 +2230,16 @@ def create_web_app(ctx) -> FastAPI:
         return LOGIN_HTML
 
     @app.post("/login")
-    def login_submit(token: str = Form("")):
+    def login_submit(password: str = Form("")):
         from starlette.responses import HTMLResponse as _HTML
-        if token == web_token:
+        current_password = get_ctx().config.ui.web_password or "wsl-manager"
+        if password == current_password:
             resp = RedirectResponse(url="/", status_code=302)
-            resp.set_cookie("session", token, httponly=True, samesite="strict")
+            resp.set_cookie("session", _make_session_cookie(), httponly=True, samesite="strict", max_age=86400)
             return resp
-        # Wrong token — re-render login with error
         err_html = LOGIN_HTML.replace(
             '<div id="err" class="error" style="display:none"></div>',
-            '<div id="err" class="error">Token incorrecto. Intenta de nuevo.</div>'
+            '<div id="err" class="error">Contraseña incorrecta. Intenta de nuevo.</div>'
         )
         return _HTML(content=err_html)
 
@@ -1442,6 +2485,95 @@ def create_web_app(ctx) -> FastAPI:
                     closed += 1
         return {"ok": True, "closed": closed, "vps": vps_id}
 
+    # === Distro extra actions (shell, explorer, export, clone, start-all) ===
+
+    @app.post("/api/distros/{name}/shell")
+    def distro_shell(name: str):
+        import subprocess
+        c = get_ctx()
+        try:
+            subprocess.Popen(["wsl.exe", "-d", name])
+            c.metrics.log_event("web_shell", name, f"terminal abierto para {name}")
+            return {"ok": True}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/api/distros/{name}/explorer")
+    def distro_explorer(name: str):
+        import subprocess
+        c = get_ctx()
+        try:
+            subprocess.Popen(["explorer.exe", f"\\\\wsl$\\{name}"])
+            c.metrics.log_event("web_explorer", name, f"explorador abierto para {name}")
+            return {"ok": True}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/api/distros/{name}/export")
+    def distro_export(name: str):
+        import subprocess
+        from pathlib import Path
+        c = get_ctx()
+        try:
+            import time as _time
+            ts = _time.strftime("%Y%m%d_%H%M%S")
+            out_path = Path.home() / "Desktop" / f"{name}_{ts}.tar"
+            r = subprocess.run(
+                ["wsl.exe", "--export", name, str(out_path)],
+                capture_output=True, text=True, timeout=300
+            )
+            if r.returncode != 0:
+                raise RuntimeError(r.stderr or r.stdout or "export failed")
+            c.metrics.log_event("web_export", name, f"exportado a {out_path}")
+            return {"ok": True, "path": str(out_path)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/api/distros/{name}/clone")
+    def distro_clone(name: str, payload: dict):
+        import subprocess
+        from pathlib import Path
+        c = get_ctx()
+        target = payload.get("target_name", "").strip()
+        if not target:
+            raise HTTPException(status_code=400, detail="target_name requerido")
+        try:
+            import time as _time, tempfile
+            ts = _time.strftime("%Y%m%d_%H%M%S")
+            tmp = Path(tempfile.gettempdir()) / f"wsl_clone_{ts}.tar"
+            r1 = subprocess.run(
+                ["wsl.exe", "--export", name, str(tmp)],
+                capture_output=True, text=True, timeout=300
+            )
+            if r1.returncode != 0:
+                raise RuntimeError(r1.stderr or r1.stdout or "export failed for clone")
+            r2 = subprocess.run(
+                ["wsl.exe", "--import", target, "", str(tmp)],
+                capture_output=True, text=True, timeout=300
+            )
+            if r2.returncode != 0:
+                raise RuntimeError(r2.stderr or r2.stdout or "import failed for clone")
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+            c.metrics.log_event("web_clone", name, f"clonada como '{target}'")
+            return {"ok": True, "target": target}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/api/start-all")
+    def start_all():
+        c = get_ctx()
+        cfg = c.store.get()
+        started = []
+        for inst in cfg.distros.instances:
+            r = c.wsl.start(inst.name)
+            if r.ok:
+                started.append(inst.name)
+        c.metrics.log_event("web_start_all", message=f"{len(started)} distros iniciadas")
+        return {"ok": True, "started": started}
+
     # === Config ===
 
     @app.get("/api/config")
@@ -1488,6 +2620,7 @@ def create_web_app(ctx) -> FastAPI:
                 "logs_dir": cfg.ui.logs_dir,
                 "language": cfg.ui.language,
                 "web_panel_enabled": cfg.ui.web_panel_enabled,
+                "web_password": cfg.ui.web_password,
                 # On close
                 "stop_distros": cfg.on_close.stop_distros,
                 # API
@@ -1517,6 +2650,7 @@ def create_web_app(ctx) -> FastAPI:
         cfg.ui.logs_dir = data.get("logs_dir", cfg.ui.logs_dir)
         cfg.ui.language = data.get("language", cfg.ui.language)
         cfg.ui.web_panel_enabled = data.get("web_panel_enabled", cfg.ui.web_panel_enabled)
+        cfg.ui.web_password = data.get("web_password", cfg.ui.web_password)
 
         # On close
         cfg.on_close.stop_distros = data.get("stop_distros", cfg.on_close.stop_distros)
@@ -1540,5 +2674,168 @@ def create_web_app(ctx) -> FastAPI:
         c.config = cfg
         c.metrics.log_event("web_settings", message="ajustes guardados desde el panel web")
         return {"ok": True, "message": "ajustes guardados"}
+
+    # === Profiles ===
+
+    @app.get("/api/profiles")
+    def profiles_list():
+        c = get_ctx()
+        from src.core.profiles import ProfileService
+        svc = ProfileService(c.store, c.wsl)
+        return {"profiles": svc.list()}
+
+    @app.post("/api/profiles/capture")
+    def profiles_capture(payload: dict):
+        c = get_ctx()
+        from src.core.profiles import ProfileService
+        name = payload.get("name", "").strip()
+        description = payload.get("description", "")
+        if not name:
+            raise HTTPException(status_code=400, detail="nombre requerido")
+        svc = ProfileService(c.store, c.wsl)
+        item = svc.capture(name, description)
+        c.metrics.log_event("web_profile_capture", name, f"perfil '{name}' capturado")
+        return {"ok": True, "profile": item.model_dump()}
+
+    @app.post("/api/profiles/apply/{name}")
+    def profiles_apply(name: str):
+        c = get_ctx()
+        from src.core.profiles import ProfileService
+        svc = ProfileService(c.store, c.wsl)
+        try:
+            ok = svc.apply(name)
+        except KeyError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        if not ok:
+            raise HTTPException(status_code=500, detail="fallo al aplicar perfil")
+        c.metrics.log_event("web_profile_apply", name, f"perfil '{name}' aplicado")
+        return {"ok": True}
+
+    @app.post("/api/profiles/edit")
+    def profiles_edit(payload: dict):
+        c = get_ctx()
+        name = payload.get("name", "").strip()
+        description = payload.get("description", "")
+        distros_to_start = payload.get("distros_to_start", [])
+        if not name:
+            raise HTTPException(status_code=400, detail="nombre requerido")
+        cfg = c.store.get()
+        existing = [i for i in cfg.profiles.items if i.name != name]
+        from src.core.config import ProfileItem
+        item = ProfileItem(name=name, description=description, distros_to_start=distros_to_start)
+        existing.append(item)
+        cfg.profiles.items = existing
+        c.store.save(cfg)
+        c.metrics.log_event("web_profile_edit", name, f"perfil '{name}' editado")
+        return {"ok": True, "profile": item.model_dump()}
+
+    # === Scheduler ===
+
+    @app.get("/api/schedule")
+    def schedule_list():
+        c = get_ctx()
+        from src.core.scheduler import Scheduler as _S
+        tasks = c.scheduler.list_tasks()
+        return {"tasks": tasks}
+
+    @app.post("/api/schedule")
+    def schedule_add(payload: dict):
+        c = get_ctx()
+        import uuid
+        from src.core.config import ScheduleTask, ScheduleAction, ScheduleSpec
+        task_id = str(uuid.uuid4())[:8]
+        task = ScheduleTask(
+            id=task_id,
+            name=payload.get("name", ""),
+            action=ScheduleAction(
+                type=payload.get("action_type", "distro_start"),
+                distro=payload.get("distro", None),
+                profile=payload.get("profile", None),
+            ),
+            schedule=ScheduleSpec(
+                days=payload.get("days", ["mon", "tue", "wed", "thu", "fri"]),
+                time=payload.get("time", "09:00"),
+            ),
+            enabled=payload.get("enabled", True),
+        )
+        c.scheduler.add_task(task)
+        c.metrics.log_event("web_schedule_add", task.name, f"tarea '{task.name}' creada")
+        return {"ok": True, "task": task.model_dump()}
+
+    @app.post("/api/schedule/{task_id}/run")
+    def schedule_run(task_id: str):
+        c = get_ctx()
+        ok = c.scheduler.run_task(task_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="tarea no encontrada o fallo")
+        return {"ok": True}
+
+    @app.delete("/api/schedule/{task_id}")
+    def schedule_remove(task_id: str):
+        c = get_ctx()
+        ok = c.scheduler.remove_task(task_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="tarea no encontrada")
+        c.metrics.log_event("web_schedule_remove", task_id, f"tarea '{task_id}' eliminada")
+        return {"ok": True}
+
+    # === Autostart ===
+
+    @app.get("/api/autostart")
+    def autostart_list():
+        c = get_ctx()
+        items = c.autostart.list_autostart()
+        return {"autostart": items}
+
+    @app.post("/api/autostart")
+    def autostart_enable(payload: dict):
+        c = get_ctx()
+        distro = payload.get("distro", "").strip()
+        delay = int(payload.get("delay_s", 0))
+        if not distro:
+            raise HTTPException(status_code=400, detail="distro requerida")
+        r = c.autostart.set_autostart(distro, True, delay)
+        if not r.ok:
+            raise HTTPException(status_code=500, detail=r.error)
+        c.metrics.log_event("web_autostart_enable", distro, f"autoarranque activado (delay {delay}s)")
+        return {"ok": True}
+
+    @app.post("/api/autostart/{distro}/disable")
+    def autostart_disable(distro: str):
+        c = get_ctx()
+        r = c.autostart.set_autostart(distro, False)
+        if not r.ok:
+            raise HTTPException(status_code=500, detail=r.error)
+        c.metrics.log_event("web_autostart_disable", distro, "autoarranque desactivado")
+        return {"ok": True}
+
+    @app.post("/api/autostart/{distro}/edit")
+    def autostart_edit(distro: str, payload: dict):
+        c = get_ctx()
+        delay = int(payload.get("delay_s", 0))
+        r = c.autostart.set_autostart(distro, True, delay)
+        if not r.ok:
+            raise HTTPException(status_code=500, detail=r.error)
+        c.metrics.log_event("web_autostart_edit", distro, f"retraso actualizado a {delay}s")
+        return {"ok": True}
+
+    # === Resources (Global Limits) ===
+
+    @app.get("/api/limits/global")
+    def limits_global_get():
+        c = get_ctx()
+        limits = c.resources.get_global_limits()
+        return {"limits": limits.model_dump(exclude_none=True)}
+
+    @app.post("/api/limits/global")
+    def limits_global_set(payload: dict):
+        c = get_ctx()
+        from src.core.config import GlobalLimits
+        limits = GlobalLimits(**payload)
+        r = c.resources.set_global_limits(limits)
+        if not r.ok:
+            raise HTTPException(status_code=500, detail=r.error)
+        c.metrics.log_event("web_limits_global", message="limites globales actualizados")
+        return {"ok": True, "message": r.output}
 
     return app

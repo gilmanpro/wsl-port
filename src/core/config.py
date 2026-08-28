@@ -155,6 +155,7 @@ class UiCfg(BaseModel):
     refresh_interval_seconds: int = 2
     metrics_retention_days: int = 30
     web_panel_enabled: bool = False
+    web_password: str = "wsl-manager"
 
 
 class AuthCfg(BaseModel):

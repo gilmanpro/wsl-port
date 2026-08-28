@@ -193,6 +193,14 @@ class SettingsTab(ttk.Frame):
             row, textvariable=self.web_port_var, width=10, bootstyle="default"
         ).pack(side="left", padx=(0, 8))
 
+        row = ttk.Frame(web_lf)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Contraseña panel web:", width=20, anchor="w", font=("Segoe UI", 10)).pack(side="left")
+        self.web_password_var = tk.StringVar(value=ui.web_password)
+        ttk.Entry(
+            row, textvariable=self.web_password_var, width=30, bootstyle="default", show="*"
+        ).pack(side="left", padx=(0, 8))
+
         # ════════════════════════════════════════════════════════════════════
         #  SECCION 4: API REST
         # ════════════════════════════════════════════════════════════════════
@@ -315,6 +323,7 @@ class SettingsTab(ttk.Frame):
 
         # Panel web
         cfg.ui.web_panel_enabled = self.web_panel_var.get()
+        cfg.ui.web_password = self.web_password_var.get() or "wsl-manager"
 
         # API REST
         try:
@@ -355,6 +364,7 @@ class SettingsTab(ttk.Frame):
         self.tray_var.set(default.ui.close_to_tray)
         self.stop_var.set(default.on_close.stop_distros)
         self.web_panel_var.set(default.ui.web_panel_enabled)
+        self.web_password_var.set(default.ui.web_password)
         self.api_var.set(default.api.enabled)
         self.api_port_var.set(str(default.api.port))
         self.api_host_var.set(default.api.host)
