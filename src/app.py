@@ -135,6 +135,7 @@ def main() -> None:
 def _build_ctx(store, cfg):
     from types import SimpleNamespace
 
+    from src.core.forwarding_service import ForwardingService
     from src.providers.autostart_provider import AutoStartProvider
     from src.providers.resource_provider import ResourceProvider
     from src.providers.wsl_provider import WslProvider
@@ -150,6 +151,7 @@ def _build_ctx(store, cfg):
         wsl=wsl,
         resources=ResourceProvider(store, wsl),
         autostart=AutoStartProvider(),
+        forwarding=ForwardingService(store, cfg),
     )
 
 
