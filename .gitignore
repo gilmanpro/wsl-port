@@ -12,21 +12,30 @@ __pycache__/
 # --- Virtual environments ---
 .venv/
 venv/
+env/
 ENV/
+.venvs/
 
 # --- Build / Packaging ---
 *.egg-info/
 *.egg
+.eggs/
 dist/
 build/
 *.whl
 *.tar.gz
+*.zip
 
 # --- Testing / Quality ---
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
 .ruff_cache/
+.mypy_cache/
+.mypy/
+.tox/
+.nox/
 
 # --- Local configuration (may contain secrets) ---
 config.json
@@ -37,6 +46,8 @@ config.json
 !.env.example
 *.key
 *.pem
+*.local
+secrets.json
 
 # --- Backup files ---
 *.bak
@@ -50,14 +61,30 @@ security/evidence/
 # --- Database ---
 metrics.db
 
+# --- Logs ---
+*.log
+logs/
+npm-debug.log*
+
 # --- IDE / Editor ---
 .vscode/
 .idea/
 *.code-workspace
 *.sublime-project
 *.sublime-workspace
+.vscode-server/
 
 # --- OS generated ---
 .DS_Store
 Thumbs.db
+Desktop.ini
+ehthumbs.db
 desktop.ini
+
+# --- Other tools ---
+node_modules/
+.pm2/
+.pnp/
+.pnp.js
+*.exe
+*.pid
