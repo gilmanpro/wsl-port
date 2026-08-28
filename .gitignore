@@ -10,7 +10,6 @@ build/
 *.spec
 tmp/
 temp_vars.txt
-wsl_port/vendor/
 
 # Security: sensitive files
 secrets.json
