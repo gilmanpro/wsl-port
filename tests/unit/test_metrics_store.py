@@ -34,14 +34,31 @@ def test_snapshot_record(tmp_path):
 
 
 def test_tokens(tmp_path):
+    m = MetricsStore(tmp_path / "m.db")
+    tid = m.add_token("abc", "write", None, "ci")
+    assert m.verify_token("abc")["scope"] == "write"
+    assert m.verify_token("xyz") is None
+    assert m.revoke_token(tid)
+    assert m.verify_token("abc") is None
+
+
+def test_legacy_token_compat(tmp_path):
+    """Legacy tokens (SHA-256 without salt) must still verify."""
     import hashlib
+    import sqlite3
 
     m = MetricsStore(tmp_path / "m.db")
-    tid = m.add_token(hashlib.sha256(b"abc").hexdigest(), "write", None, "ci")
-    assert m.token_exists(hashlib.sha256(b"abc").hexdigest())["scope"] == "write"
-    assert m.token_exists(hashlib.sha256(b"xyz").hexdigest()) is None
-    assert m.revoke_token(tid)
-    assert m.token_exists(hashlib.sha256(b"abc").hexdigest()) is None
+    # Insert a legacy token directly (no salt column value)
+    legacy_hash = hashlib.sha256(b"legacy-token").hexdigest()
+    with m._lock:
+        m._conn.execute(
+            "INSERT INTO tokens (token_hash, salt, scope, created, expires, note) VALUES (?,?,?,?,?,?)",
+            (legacy_hash, None, "read", 1000.0, None, "legacy"),
+        )
+        m._conn.commit()
+    # The legacy token must verify via verify_token
+    assert m.verify_token("legacy-token")["scope"] == "read"
+    assert m.verify_token("wrong") is None
 
 
 def test_prune(tmp_path):

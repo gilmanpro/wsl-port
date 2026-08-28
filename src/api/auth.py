@@ -6,7 +6,6 @@ Scopes: read (GET), write (acciones), admin (config).
 """
 from __future__ import annotations
 
-import hashlib
 import threading
 import time
 
@@ -44,8 +43,7 @@ class AuthService:
     def _verify_token(self, token: str, required_scope: str) -> bool:
         if not token:
             return False
-        digest = hashlib.sha256(token.encode()).hexdigest()
-        row = self._metrics.token_exists(digest)
+        row = self._metrics.verify_token(token)
         if row is None:
             return False
         if row["expires"] and row["expires"] < time.time():

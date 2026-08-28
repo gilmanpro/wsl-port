@@ -143,7 +143,12 @@ def diag(ctx: typer.Context, out: Optional[str] = typer.Option(None, "--out", he
         add("info.txt", f"fecha: {datetime.now().isoformat()}\nplataforma: {platform.platform()}\npython: {sys.version}\n")
         add("wsl-version.txt", c.wsl.version().output)
         add("wsl-list.txt", c.wsl._wsl(["-l", "-v"]).output)  # noqa: SLF001
-        add("config.json", json.dumps(c.store.get().model_dump(by_alias=True, exclude_none=True), indent=2))
+        # M7: excluir campos sensibles del config en el bundle de diagnostico
+        cfg_data = c.store.get().model_dump(by_alias=True, exclude_none=True)
+        for sensitive_key in ("api", "mcp"):
+            if sensitive_key in cfg_data:
+                cfg_data[sensitive_key] = {"_redacted": True, "enabled": cfg_data[sensitive_key].get("enabled", False)}
+        add("config.json", json.dumps(cfg_data, indent=2))
         add("status.json", json.dumps(Watcher(c.store, MetricsStore(), EventBus(), c.wsl).snapshot_state(), indent=2, default=str))
         logf = localappdata_dir() / "logs" / "wsl-manager.log"
         if logf.exists():
@@ -315,7 +320,6 @@ def api_tokens(
     token_id: Optional[int] = typer.Option(None, "--id"),
 ):
     """Tokens de la API/MCP (P1)."""
-    import hashlib
     import secrets
 
     c = ctx.obj
@@ -339,7 +343,7 @@ def api_tokens(
 
         token = secrets.token_urlsafe(32)
         expires = time.time() + expires_days * 86400 if expires_days else None
-        c.metrics.add_token(hashlib.sha256(token.encode()).hexdigest(), scope, expires, note)
+        c.metrics.add_token(token, scope, expires, note)
 
         # Guardar token en archivo seguro en lugar de imprimirlo en stdout
         token_dir = localappdata_dir() / "tokens"

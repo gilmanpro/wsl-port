@@ -199,11 +199,24 @@ class MetricsStore:
 
     # -- tokens (para la API) ----------------------------------------------------------
 
-    def add_token(self, token_hash: str, scope: str, expires: float | None, note: str = "") -> int:
+    @staticmethod
+    def _hash_token(token: str, salt: bytes) -> str:
+        """Derive a key from *token* + *salt* using PBKDF2-HMAC-SHA256."""
+        dk = hashlib.pbkdf2_hmac(_PBKDF2_HASH, token.encode(), salt, _PBKDF2_KEYLEN)
+        return dk.hex()
+
+    def add_token(self, token: str, scope: str, expires: float | None, note: str = "") -> int:
+        """Store a new API token using PBKDF2 with a random per-token salt.
+
+        *token* is the **plaintext** token (never stored).
+        """
+        salt = secrets.token_bytes(16)
+        token_hash = self._hash_token(token, salt)
+        salt_hex = salt.hex()
         with self._lock:
             cur = self._conn.execute(
-                "INSERT INTO tokens (token_hash, scope, created, expires, note) VALUES (?,?,?,?,?)",
-                (token_hash, scope, time.time(), expires, note),
+                "INSERT INTO tokens (token_hash, salt, scope, created, expires, note) VALUES (?,?,?,?,?,?)",
+                (token_hash, salt_hex, scope, time.time(), expires, note),
             )
             self._conn.commit()
             return cur.lastrowid
@@ -220,7 +233,42 @@ class MetricsStore:
             for r in self._query("SELECT * FROM tokens ORDER BY id")
         ]
 
+    def verify_token(self, token: str) -> dict[str, Any] | None:
+        """Verify a plaintext *token* against all stored tokens.
+
+        For PBKDF2 tokens (salt != NULL) the per-token salt is used.
+        For legacy tokens (salt IS NULL) a plain SHA-256 hash is tried
+        for backward compatibility — those tokens should be re-created.
+        """
+        if not token:
+            return None
+        for r in self._query("SELECT * FROM tokens"):
+            salt_col = r["salt"]
+            if salt_col:
+                expected = self._hash_token(token, bytes.fromhex(salt_col))
+                if expected == r["token_hash"]:
+                    return {
+                        "id": r["id"],
+                        "scope": r["scope"],
+                        "created": r["created"],
+                        "expires": r["expires"],
+                        "note": r["note"],
+                    }
+            else:
+                # Legacy: plain SHA-256 (tokens created before the salt migration)
+                legacy_hash = hashlib.sha256(token.encode()).hexdigest()
+                if legacy_hash == r["token_hash"]:
+                    return {
+                        "id": r["id"],
+                        "scope": r["scope"],
+                        "created": r["created"],
+                        "expires": r["expires"],
+                        "note": r["note"],
+                    }
+        return None
+
     def token_exists(self, token_hash: str) -> dict[str, Any] | None:
+        """Legacy lookup by pre-computed hash. Prefer verify_token()."""
         rows = self._query("SELECT * FROM tokens WHERE token_hash = ?", (token_hash,))
         if not rows:
             return None

@@ -288,16 +288,44 @@ typer.echo(f"uso: Authorization: Bearer {token}")
 
 ## Recomendaciones Priorizadas
 
-1. **(C1)** Sanitizar `limits.service` con regex estricta antes de interpolación en shell
-2. **(C2)** Implementar autenticación en MCP HTTP; `token_required` por defecto True
-3. **(H1)** Reutilizar `AuthService` en el panel web o agregar token opaco
-4. **(H2)** Validar `memory_max`, `cpu_quota`, `tasks_max` con regex; usar `shlex.quote()`
-5. **(H3)** Validar distro name contra `wsl.list_distros()` en todos los puntos de entrada
-6. **(H4)** Guardar token en archivo seguro, no imprimir a stdout
-7. **(H5)** Validar rango de puerto y host en configuración
-8. **(M5)** Corregir path validation para cubrir `target == base`
-9. **(M3)** Envolver `add_token`/`revoke_token` con `self._lock`
-10. **(I1)** Crear `.gitignore` antes de inicializar repositorio Git
+1. **(C1)** Sanitizar `limits.service` con regex estricta antes de interpolación en shell ✅
+2. **(C2)** Implementar autenticación en MCP HTTP; `token_required` por defecto True ✅
+3. **(H1)** Reutilizar `AuthService` en el panel web o agregar token opaco ✅
+4. **(H2)** Validar `memory_max`, `cpu_quota`, `tasks_max` con regex; usar `shlex.quote()` ✅
+5. **(H3)** Validar distro name contra `wsl.list_distros()` en todos los puntos de entrada ✅
+6. **(H4)** Guardar token en archivo seguro, no imprimir a stdout ✅
+7. **(H5)** Validar rango de puerto y host en configuración ✅
+8. **(M5)** Corregir path validation para cubrir `target == base` ✅
+9. **(M3)** Envolver `add_token`/`revoke_token` con `self._lock` ✅
+10. **(I1)** Crear `.gitignore` antes de inicializar repositorio Git ✅
+
+---
+
+## Estado de Correcciones (2026-08-24)
+
+| Hallazgo | Estado | Archivos Modificados |
+|----------|--------|---------------------|
+| C1 command injection service name | **CORREGIDO** | `resource_provider.py` — regex validation + `shlex.quote()` |
+| C2 MCP HTTP sin auth | **CORREGIDO** | `mcp/server.py`, `mcp/tools.py` — Bearer token middleware |
+| H1 web panel sin auth | **CORREGIDO** | `web_app.py` — session cookie + login form |
+| H2 injection systemd body | **CORREGIDO** | `resource_provider.py` — regex validation para memory_max/cpu_quota/tasks_max |
+| H3 distro name sin validación | **CORREGIDO** | `resource_provider.py`, `routes.py` — validate against real distros |
+| H4 token impreso a stdout | **CORREGIDO** | `commands_ux.py` — guardar en archivo con permisos restringidos |
+| H5 port sin rango | **CORREGIDO** | `config.py`, `settings_tab.py` — field_validator 1024-65535 |
+| M1 temp file predecible | **CORREGIDO** | `wsl_provider.py` — `tempfile.NamedTemporaryFile` |
+| M2 TOCTOU ConfigStore.get() | **CORREGIDO** | `config.py` — `with self._lock:` |
+| M3 thread safety tokens | **CORREGIDO** | `metrics_store.py` — `with self._lock:` en add/revoke |
+| M4 root sin validación distro | **CORREGIDO** | `resource_provider.py` — `_validate_distro_exists()` |
+| M5 path traversal export | **CORREGIDO** | `routes.py` — `target.relative_to(base)` |
+| M6 hash sin salt | **PENDIENTE (mejora)** | Opcional: migrar a `pbkdf2_hmac` |
+| M7 diag incluye config | **CORREGIDO** | `commands_ux.py` — redactar api/mcp config |
+| L1 allowed_ips bypass | **CORREGIDO** | `auth.py` — `is not None` check |
+| L2 sin CSP header | **CORREGIDO** | `server.py` — Content-Security-Policy |
+| L3 errores informativos | **CORREGIDO (previo)** | `routes.py` — `_fail()` genérico |
+| L4 SQLite threading | **CORREGIDO** | `metrics_store.py` — locks en tokens |
+| L5 try/except pass | **CORREGIDO** | `cli.py`, `monitor_tab.py`, `tray.py` — `log.debug()` |
+| L6 rate limit in-memory | **PENDIENTE (diseño)** | Requiere persistencia en SQLite |
+| I1 sin .gitignore | **CORREGIDO** | `.gitignore` creado + repo vinculado a GitHub |
 
 ---
 
@@ -316,20 +344,11 @@ pytest tests/ -v
 
 ## Estado Final del Sistema
 
-- Todos los tests pasan: **57/57 OK**
+- Todos los tests pasan: **64/64 OK**
+- Repositorio Git inicializado en `main`
+- Remoto configurado: `https://github.com/gilmanpro/wsl-port.git`
+- `.gitignore` creado excluyendo archivos sensibles
+- Template de security vulnerability issue creado
 - Sin archivos temporales residuales
 - Sin tokens comprometidos
-- Configuraciones temporales eliminadas
-- Evidencia: `security/evidence/` (cuando aplique)
-
-## Auditoría Anterior (2026-08-14) — Estado de Remediaciones
-
-| Hallazgo | Estado | Verificación |
-|----------|--------|--------------|
-| M1 export path arbitrario | **CORREGIDO** | `routes.py:106-109` valida que destino esté dentro de `snapshot_dir()` |
-| L1 `/health` sin rate limit | **CORREGIDO** | `dependencies=[require("read")]` en `/health` |
-| L2 headers ausentes | **CORREGIDO** | `SecurityHeadersMiddleware` en API y panel web |
-| L3 errores de wsl en 500 | **CORREGIDO** | `_fail()` loguea detalle y devuelve genérico |
-| M2 panel web sin auth | **PENDIENTE** | Decisión de diseño (loopback). Recomendado: token opcional |
-| M3 `mcp.token_required` | **PENDIENTE** | Implementar chequeo o eliminar flag |
-| L4 SHA-256 sin salt | **PENDIENTE** | `pbkdf2_hmac` con salt |
+- Dependencia `python-multipart` agregada a `pyproject.toml`

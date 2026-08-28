@@ -1,7 +1,6 @@
 """Servidor MCP sobre stdio (seccion 21.4). Import lazy de 'mcp'."""
 from __future__ import annotations
 
-import hashlib
 import time
 
 from src.cli.common import CliContext
@@ -39,8 +38,7 @@ def _verify_mcp_token(ctx: CliContext, token: str) -> bool:
     """Verifica un token Bearer contra la DB. Devuelve True si es valido."""
     if not token:
         return False
-    digest = hashlib.sha256(token.encode()).hexdigest()
-    row = ctx.metrics.token_exists(digest)
+    row = ctx.metrics.verify_token(token)
     if row is None:
         return False
     # Verificar expiracion
