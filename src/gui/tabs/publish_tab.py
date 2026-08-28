@@ -1,4 +1,4 @@
-"""Pestana Publicar a Internet: VPS + tunnels para publicar servicios.
+"""Pestana Publicar a Internet: VPS + tunnels para publicar servicios — ttkbootstrap moderno.
 
 Combina gestion de VPS configurados y tunnels SSH hacia ellos para
 abrir servicios al Internet de forma facil.
@@ -13,6 +13,7 @@ from ttkbootstrap.constants import *
 
 from src.core.config import VpsCfg
 from src.core.logger import get_logger
+from src.gui.widgets import StatCard, StatusDot, ActionButton, SectionHeader, COLORS
 
 log = get_logger("gui.publish")
 
@@ -30,22 +31,28 @@ class PublishTab(ttk.Frame):
     # ── Construccion de la interfaz ──────────────────────────────────────
     def _build(self) -> None:
         # ── Header ──
-        header = ttk.Frame(self)
+        header = ttk.Frame(self, bootstyle="dark")
         header.pack(fill="x", padx=12, pady=(10, 4))
 
-        ttk.Label(
-            header,
-            text="Publicar a Internet",
-            font=("Segoe UI", 16, "bold"),
-        ).pack(side="left")
+        SectionHeader(header, text="\U0001f310 Publicar a Internet").pack(side="left")
 
-        ttk.Button(
-            header,
-            text="+ Add VPS",
-            bootstyle=SUCCESS,
-            command=self._add_vps_dialog,
-            width=16,
+        ActionButton(
+            header, text="+ Add VPS", bootstyle=SUCCESS,
+            command=self._add_vps_dialog, width=16,
         ).pack(side="right", padx=4)
+
+        # ── Stats Cards ──
+        cards_frame = ttk.Frame(self, bootstyle="dark")
+        cards_frame.pack(fill="x", padx=12, pady=(0, 8))
+
+        self.card_vps = StatCard(cards_frame, value="0", label="VPS Configurados", bootstyle="info", icon="\U0001f310")
+        self.card_vps.pack(side="left", fill="x", expand=True, padx=(0, 6))
+
+        self.card_tunnels = StatCard(cards_frame, value="0", label="Tunnels Activos", bootstyle="success", icon="\U0001f50c")
+        self.card_tunnels.pack(side="left", fill="x", expand=True, padx=(0, 6))
+
+        self.card_inactive = StatCard(cards_frame, value="0", label="Sin Tunnels", bootstyle="secondary", icon="\u23f9")
+        self.card_inactive.pack(side="left", fill="x", expand=True)
 
         ttk.Separator(self, bootstyle="secondary").pack(fill="x", padx=12, pady=4)
 
@@ -54,10 +61,10 @@ class PublishTab(ttk.Frame):
         paned.pack(fill="both", expand=True, padx=12, pady=4)
 
         # === VPS Section ===
-        vps_lf = ttk.LabelFrame(paned, text="VPS Configurados", padding=4)
+        vps_lf = ttk.LabelFrame(paned, text="  VPS Configurados  ", bootstyle="primary", padding=4)
         paned.add(vps_lf)
 
-        vps_tree_frame = ttk.Frame(vps_lf)
+        vps_tree_frame = ttk.Frame(vps_lf, bootstyle="dark")
         vps_tree_frame.pack(fill="both", expand=True)
 
         columns = [
@@ -65,7 +72,7 @@ class PublishTab(ttk.Frame):
             ("host", "Host", 180),
             ("user", "Usuario", 100),
             ("port", "Puerto SSH", 100),
-            ("identity_file", "Clave SSH", 200),
+            ("identity_file", "Clave SSH", 160),
             ("status", "Estado", 120),
         ]
 
@@ -90,35 +97,35 @@ class PublishTab(ttk.Frame):
         vps_tree_frame.columnconfigure(0, weight=1)
 
         # VPS action buttons
-        vps_actions = ttk.Frame(vps_lf)
+        vps_actions = ttk.Frame(vps_lf, bootstyle="dark")
         vps_actions.pack(fill="x", pady=(4, 0))
 
-        ttk.Button(
-            vps_actions, text="Remove VPS", bootstyle=DANGER,
+        ActionButton(
+            vps_actions, text="🗑 Remove VPS", bootstyle=DANGER,
             command=self._remove_vps, width=14,
         ).pack(side="left", padx=4)
-        ttk.Button(
-            vps_actions, text="Edit VPS", bootstyle=INFO,
+        ActionButton(
+            vps_actions, text="✏ Edit VPS", bootstyle=INFO,
             command=self._edit_vps_dialog, width=14,
         ).pack(side="left", padx=4)
-        ttk.Button(
-            vps_actions, text="Connect", bootstyle=PRIMARY,
+        ActionButton(
+            vps_actions, text="▶ Connect", bootstyle=PRIMARY,
             command=self._connect_vps, width=14,
         ).pack(side="left", padx=4)
-        ttk.Button(
-            vps_actions, text="Disconnect", bootstyle=WARNING,
+        ActionButton(
+            vps_actions, text="⏹ Disconnect", bootstyle=WARNING,
             command=self._disconnect_vps, width=14,
         ).pack(side="left", padx=4)
-        ttk.Button(
-            vps_actions, text="Refresh", bootstyle="secondary-outline",
+        ActionButton(
+            vps_actions, text="🔄 Refresh", bootstyle="secondary-outline",
             command=self.refresh, width=10,
         ).pack(side="right", padx=4)
 
         # === Tunnels Section ===
-        tun_lf = ttk.LabelFrame(paned, text="Tunnels Activos por VPS", padding=4)
+        tun_lf = ttk.LabelFrame(paned, text="  Tunnels Activos por VPS  ", bootstyle="info", padding=4)
         paned.add(tun_lf)
 
-        tun_tree_frame = ttk.Frame(tun_lf)
+        tun_tree_frame = ttk.Frame(tun_lf, bootstyle="dark")
         tun_tree_frame.pack(fill="both", expand=True)
 
         tun_columns = [
@@ -152,16 +159,15 @@ class PublishTab(ttk.Frame):
 
         # ── Status bar ──
         self.status_var = tk.StringVar(value="Cargando...")
-        status_bar = ttk.Frame(self)
+        status_bar = ttk.Frame(self, bootstyle="dark")
         status_bar.pack(fill="x", padx=12, pady=(0, 6))
 
-        self.status_dot = ttk.Label(
-            status_bar, text="\u25cf", font=("Segoe UI", 10), foreground="#888"
-        )
-        self.status_dot.pack(side="left", padx=(0, 4))
+        self.status_dot = StatusDot(status_bar, state="stopped")
+        self.status_dot.pack(side="left", padx=(0, 6))
 
         ttk.Label(
-            status_bar, textvariable=self.status_var, foreground="#888"
+            status_bar, textvariable=self.status_var, foreground=COLORS["muted"],
+            font=("Segoe UI", 9), bootstyle="dark",
         ).pack(side="left")
 
     # ── Datos ────────────────────────────────────────────────────────────
@@ -173,30 +179,29 @@ class PublishTab(ttk.Frame):
             self.vps_tree.delete(*self.vps_tree.get_children())
             vps_list = cfg.publish.vps_list
             for v in vps_list:
-                # Check if there are active tunnels for this VPS
                 active_tuns = sum(
                     1 for t in cfg.forwarding.tunnels
                     if t.ssh_host == v.host and t.enabled
                 )
-                status = f"{active_tuns} tunnel(s)" if active_tuns > 0 else "Sin tunnels"
+                status = f"\u25cf {active_tuns} tunnel(s)" if active_tuns > 0 else "\u25cb Sin tunnels"
                 self.vps_tree.insert(
                     "", "end",
                     values=(v.id, v.host, v.user, v.port, v.identity_file or "(default)", status),
                 )
 
-            # Refresh tunnels tree (show tunnels that reference VPS hosts)
+            # Refresh tunnels tree
             self.tun_tree.delete(*self.tun_tree.get_children())
-            vps_hosts = {v.host for v in vps_list}
+            tuns_active = 0
             for t in cfg.forwarding.tunnels:
                 is_active = t.enabled
-                # Try to find which VPS this tunnel belongs to
                 vps_id = ""
                 for v in vps_list:
                     if t.ssh_host == v.host or t.remote_host == v.host:
                         vps_id = v.id
                         break
                 if not vps_id:
-                    continue  # only show tunnels linked to known VPS
+                    continue
+                status = "\u25cf Activo" if is_active else "\u25cb Inactivo"
                 self.tun_tree.insert(
                     "", "end",
                     values=(
@@ -205,23 +210,26 @@ class PublishTab(ttk.Frame):
                         t.remote_host,
                         t.remote_port,
                         t.local_port,
-                        "Activo" if is_active else "Inactivo",
+                        status,
                     ),
                 )
+                if is_active:
+                    tuns_active += 1
 
+            # Update stats cards
             vps_count = len(vps_list)
             tuns_shown = len(self.tun_tree.get_children())
-            self.status_var.set(f"{vps_count} VPS configurados, {tuns_shown} tunnels visibles")
+            self.card_vps.set_value(str(vps_count))
+            self.card_tunnels.set_value(str(tuns_active))
+            self.card_inactive.set_value(str(max(0, vps_count - tuns_active)))
 
-            if vps_count > 0:
-                self.status_dot.configure(foreground="#28a745")
-            else:
-                self.status_dot.configure(foreground="#888")
+            self.status_var.set(f"{vps_count} VPS configurados, {tuns_shown} tunnels visibles")
+            self.status_dot.set_state("running" if vps_count > 0 else "stopped")
 
         except Exception as e:  # noqa: BLE001
             log.exception("refresh publish tab fallo")
-            self.status_var.set(f"error: {e}")
-            self.status_dot.configure(foreground="#dc3545")
+            self.status_var.set(f"Error: {e}")
+            self.status_dot.set_state("error")
         finally:
             if self.winfo_exists():
                 self._job = self.after(5000, self.refresh)
@@ -330,7 +338,6 @@ class PublishTab(ttk.Frame):
                     identity_file=ident_var.get().strip(),
                 )
                 if vps:
-                    # Edit: remove old, add new
                     self.ctx.store.remove_vps(vps.id)
                 self.ctx.store.add_vps(new_vps)
                 dlg.destroy()
@@ -340,10 +347,10 @@ class PublishTab(ttk.Frame):
 
         btn_frame = ttk.Frame(dlg)
         btn_frame.pack(pady=12)
-        ttk.Button(btn_frame, text="Guardar", command=_ok, bootstyle=SUCCESS, width=14).pack(
+        ActionButton(btn_frame, text="Guardar", command=_ok, bootstyle=SUCCESS, width=14).pack(
             side="left", padx=6
         )
-        ttk.Button(btn_frame, text="Cancelar", command=dlg.destroy, bootstyle=DANGER, width=14).pack(
+        ActionButton(btn_frame, text="Cancelar", command=dlg.destroy, bootstyle=DANGER, width=14).pack(
             side="left", padx=6
         )
 
@@ -433,10 +440,12 @@ class PublishTab(ttk.Frame):
                 if not r.get("ok"):
                     messagebox.showerror("WSL Manager", r.get("error", "error"))
                     return
-                # Start the tunnel
                 r2 = self.ctx.forwarding.start_tunnel(name)
                 if not r2.get("ok"):
-                    messagebox.showwarning("WSL Manager", f"Tunnel creado pero no se pudo iniciar: {r2.get('error', '')}")
+                    messagebox.showwarning(
+                        "WSL Manager",
+                        f"Tunnel creado pero no se pudo iniciar: {r2.get('error', '')}",
+                    )
                 dlg.destroy()
                 self.refresh()
             except Exception as e:  # noqa: BLE001
@@ -444,10 +453,10 @@ class PublishTab(ttk.Frame):
 
         btn_frame = ttk.Frame(dlg)
         btn_frame.pack(pady=12)
-        ttk.Button(btn_frame, text="Abrir Tunnel", command=_ok, bootstyle=PRIMARY, width=14).pack(
+        ActionButton(btn_frame, text="Abrir Tunnel", command=_ok, bootstyle=PRIMARY, width=14).pack(
             side="left", padx=6
         )
-        ttk.Button(btn_frame, text="Cancelar", command=dlg.destroy, bootstyle=DANGER, width=14).pack(
+        ActionButton(btn_frame, text="Cancelar", command=dlg.destroy, bootstyle=DANGER, width=14).pack(
             side="left", padx=6
         )
 

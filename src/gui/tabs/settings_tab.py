@@ -7,6 +7,8 @@ from tkinter import messagebox
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 
+from src.gui.widgets import SectionHeader, ActionButton, COLORS
+
 
 class SettingsTab(ttk.Frame):
     def __init__(self, master, ctx) -> None:
@@ -19,9 +21,9 @@ class SettingsTab(ttk.Frame):
         api = self.ctx.config.api
 
         # ── Scrollable container ──
-        canvas = tk.Canvas(self, highlightthickness=0)
-        vsb = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
-        scroll_frame = ttk.Frame(canvas)
+        canvas = tk.Canvas(self, highlightthickness=0, bg=COLORS["card"])
+        vsb = ttk.Scrollbar(self, orient="vertical", command=canvas.yview, bootstyle="round")
+        scroll_frame = ttk.Frame(canvas, bootstyle="dark")
 
         scroll_frame.bind(
             "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
@@ -42,6 +44,13 @@ class SettingsTab(ttk.Frame):
         pad = {"padx": 16, "pady": 6}
 
         # ════════════════════════════════════════════════════════════════════
+        #  HEADER
+        # ════════════════════════════════════════════════════════════════════
+        SectionHeader(root, text="\U0001f527 Ajustes de la Aplicacion").pack(anchor="w", **pad)
+
+        ttk.Separator(root, bootstyle="secondary").pack(fill="x", **pad)
+
+        # ════════════════════════════════════════════════════════════════════
         #  SECCION 1: APARIENCIA
         # ════════════════════════════════════════════════════════════════════
         appearance_lf = ttk.LabelFrame(
@@ -52,7 +61,7 @@ class SettingsTab(ttk.Frame):
         # -- Tema --
         row = ttk.Frame(appearance_lf)
         row.pack(fill="x", pady=4)
-        ttk.Label(row, text="Tema:", width=18, anchor="w").pack(side="left")
+        ttk.Label(row, text="Tema:", width=20, anchor="w", font=("Segoe UI", 10)).pack(side="left")
         self.theme_var = tk.StringVar(value=ui.theme)
         themes_dark = ["darkly", "superhero", "solar", "cyborg", "vapor"]
         themes_light = ["cosmo", "flatly", "litera"]
@@ -61,20 +70,39 @@ class SettingsTab(ttk.Frame):
             textvariable=self.theme_var,
             values=themes_dark + themes_light,
             state="readonly",
-            width=20,
+            width=22,
             bootstyle="primary",
         ).pack(side="left", padx=(0, 8))
 
-        ttk.Separator(appearance_lf, bootstyle="secondary").pack(
-            fill="x", pady=(8, 4)
-        )
+        ttk.Label(
+            row,
+            text="(se aplica al reiniciar)",
+            foreground=COLORS["muted"],
+            font=("Segoe UI", 8),
+        ).pack(side="left")
+
+        ttk.Separator(appearance_lf, bootstyle="secondary").pack(fill="x", pady=(8, 4))
+
+        # -- Idioma --
+        row = ttk.Frame(appearance_lf)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Idioma:", width=20, anchor="w", font=("Segoe UI", 10)).pack(side="left")
+        self.lang_var = tk.StringVar(value="es")
+        ttk.Combobox(
+            row,
+            textvariable=self.lang_var,
+            values=["es", "en"],
+            state="readonly",
+            width=22,
+            bootstyle="primary",
+        ).pack(side="left", padx=(0, 8))
+
+        ttk.Separator(appearance_lf, bootstyle="secondary").pack(fill="x", pady=(8, 4))
 
         # -- Intervalo de refresh --
         row = ttk.Frame(appearance_lf)
         row.pack(fill="x", pady=4)
-        ttk.Label(row, text="Intervalo refresh:", width=18, anchor="w").pack(
-            side="left"
-        )
+        ttk.Label(row, text="Intervalo refresh:", width=20, anchor="w", font=("Segoe UI", 10)).pack(side="left")
         self.refresh_var = tk.StringVar(value=str(ui.refresh_interval_seconds))
         ttk.Combobox(
             row,
@@ -84,11 +112,17 @@ class SettingsTab(ttk.Frame):
             width=10,
             bootstyle="primary",
         ).pack(side="left", padx=(0, 8))
+        ttk.Label(
+            row,
+            text="segundos",
+            foreground=COLORS["muted"],
+            font=("Segoe UI", 9),
+        ).pack(side="left")
 
         # -- Log Level --
         row = ttk.Frame(appearance_lf)
         row.pack(fill="x", pady=4)
-        ttk.Label(row, text="Nivel de log:", width=18, anchor="w").pack(side="left")
+        ttk.Label(row, text="Nivel de log:", width=20, anchor="w", font=("Segoe UI", 10)).pack(side="left")
         self.loglevel_var = tk.StringVar(value=ui.log_level)
         ttk.Combobox(
             row,
@@ -153,11 +187,8 @@ class SettingsTab(ttk.Frame):
 
         row = ttk.Frame(web_lf)
         row.pack(fill="x", pady=4)
-        ttk.Label(row, text="Puerto panel web:", width=18, anchor="w").pack(
-            side="left"
-        )
+        ttk.Label(row, text="Puerto panel web:", width=20, anchor="w", font=("Segoe UI", 10)).pack(side="left")
         self.web_port_var = tk.StringVar(value=str(ui.refresh_interval_seconds))
-        # Use a sensible default for web panel port
         ttk.Entry(
             row, textvariable=self.web_port_var, width=10, bootstyle="default"
         ).pack(side="left", padx=(0, 8))
@@ -183,7 +214,7 @@ class SettingsTab(ttk.Frame):
         # Puerto API
         row = ttk.Frame(api_lf)
         row.pack(fill="x", pady=4)
-        ttk.Label(row, text="Puerto API:", width=18, anchor="w").pack(side="left")
+        ttk.Label(row, text="Puerto API:", width=20, anchor="w", font=("Segoe UI", 10)).pack(side="left")
         self.api_port_var = tk.StringVar(value=str(api.port))
         ttk.Entry(
             row, textvariable=self.api_port_var, width=10, bootstyle="default"
@@ -192,7 +223,7 @@ class SettingsTab(ttk.Frame):
         # Host API
         row = ttk.Frame(api_lf)
         row.pack(fill="x", pady=4)
-        ttk.Label(row, text="Host API:", width=18, anchor="w").pack(side="left")
+        ttk.Label(row, text="Host API:", width=20, anchor="w", font=("Segoe UI", 10)).pack(side="left")
         self.api_host_var = tk.StringVar(value=api.host)
         ttk.Combobox(
             row,
@@ -204,27 +235,59 @@ class SettingsTab(ttk.Frame):
         ).pack(side="left", padx=(0, 8))
 
         # ════════════════════════════════════════════════════════════════════
+        #  SECCION 5: SEGURIDAD (placeholder)
+        # ════════════════════════════════════════════════════════════════════
+        ttk.Separator(root, bootstyle="secondary").pack(fill="x", **pad)
+
+        security_lf = ttk.LabelFrame(
+            root, text="  Seguridad  ", bootstyle="secondary", padding=12
+        )
+        security_lf.pack(fill="x", **pad)
+
+        row = ttk.Frame(security_lf)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Token API:", width=20, anchor="w", font=("Segoe UI", 10)).pack(side="left")
+        self.token_var = tk.StringVar(value="")
+        ttk.Entry(
+            row, textvariable=self.token_var, width=30, bootstyle="default", show="*"
+        ).pack(side="left", padx=(0, 8))
+
+        row = ttk.Frame(security_lf)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Rate Limit:", width=20, anchor="w", font=("Segoe UI", 10)).pack(side="left")
+        self.ratelimit_var = tk.StringVar(value="100")
+        ttk.Entry(
+            row, textvariable=self.ratelimit_var, width=10, bootstyle="default"
+        ).pack(side="left", padx=(0, 8))
+        ttk.Label(
+            row,
+            text="requests/min",
+            foreground=COLORS["muted"],
+            font=("Segoe UI", 9),
+        ).pack(side="left")
+
+        # ════════════════════════════════════════════════════════════════════
         #  BOTONES DE ACCION
         # ════════════════════════════════════════════════════════════════════
         ttk.Separator(root, bootstyle="secondary").pack(fill="x", **pad)
 
-        btn_frame = ttk.Frame(root)
+        btn_frame = ttk.Frame(root, bootstyle="dark")
         btn_frame.pack(fill="x", padx=16, pady=(4, 16))
 
-        ttk.Button(
+        ActionButton(
             btn_frame,
-            text="Guardar ajustes",
+            text="💾 Guardar ajustes",
             command=self._save,
             bootstyle=SUCCESS,
-            width=18,
+            width=20,
         ).pack(side="left", padx=(0, 8))
 
-        ttk.Button(
+        ActionButton(
             btn_frame,
-            text="Restablecer",
+            text="🔄 Restablecer",
             command=self._reset,
             bootstyle=DANGER,
-            width=18,
+            width=20,
         ).pack(side="left", padx=(0, 8))
 
     # ── Guardar ──────────────────────────────────────────────────────────

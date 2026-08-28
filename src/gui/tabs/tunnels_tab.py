@@ -9,6 +9,7 @@ from ttkbootstrap.constants import *
 
 from src.core.config import TunnelCfg
 from src.core.logger import get_logger
+from src.gui.widgets import StatCard, StatusDot, ActionButton, SectionHeader, COLORS
 
 log = get_logger("gui.tunnels")
 
@@ -26,36 +27,40 @@ class TunnelsTab(ttk.Frame):
     # ── Construccion de la interfaz ──────────────────────────────────────
     def _build(self) -> None:
         # ── Header ──
-        header = ttk.Frame(self)
+        header = ttk.Frame(self, bootstyle="dark")
         header.pack(fill="x", padx=12, pady=(10, 4))
 
-        ttk.Label(
-            header,
-            text="SSH Tunnels",
-            font=("Segoe UI", 16, "bold"),
-        ).pack(side="left")
+        SectionHeader(header, text="\U0001f50c SSH Tunnels").pack(side="left")
 
-        ttk.Button(
-            header,
-            text="+ Add Tunnel",
-            bootstyle=SUCCESS,
-            command=self._add_dialog,
-            width=16,
+        ActionButton(
+            header, text="+ Add Tunnel", bootstyle=SUCCESS,
+            command=self._add_dialog, width=16,
         ).pack(side="right", padx=4)
+
+        # ── Stats Cards ──
+        cards_frame = ttk.Frame(self, bootstyle="dark")
+        cards_frame.pack(fill="x", padx=12, pady=(0, 8))
+
+        self.card_total = StatCard(cards_frame, value="0", label="Total", bootstyle="info", icon="\U0001f4e6")
+        self.card_total.pack(side="left", fill="x", expand=True, padx=(0, 6))
+
+        self.card_connected = StatCard(cards_frame, value="0", label="Connected", bootstyle="success", icon="\u25b6")
+        self.card_connected.pack(side="left", fill="x", expand=True, padx=(0, 6))
+
+        self.card_disconnected = StatCard(cards_frame, value="0", label="Disconnected", bootstyle="secondary", icon="\u23f9")
+        self.card_disconnected.pack(side="left", fill="x", expand=True)
 
         ttk.Separator(self, bootstyle="secondary").pack(fill="x", padx=12, pady=4)
 
         # ── Treeview ──
-        tree_frame = ttk.Frame(self)
+        tree_frame = ttk.Frame(self, bootstyle="dark")
         tree_frame.pack(fill="both", expand=True, padx=12, pady=4)
 
         columns = [
             ("name", "Nombre", 130),
             ("remote_host", "Host Remoto", 140),
-            ("remote_port", "Puerto Remoto", 110),
-            ("local_port", "Puerto Local", 100),
+            ("remote_port", "Puerto", 80),
             ("ssh_user", "SSH User", 90),
-            ("ssh_host", "SSH Host", 140),
             ("auto_reconnect", "Auto-Reconnect", 110),
             ("active", "Estado", 100),
         ]
@@ -80,56 +85,34 @@ class TunnelsTab(ttk.Frame):
         tree_frame.rowconfigure(0, weight=1)
         tree_frame.columnconfigure(0, weight=1)
 
+        # Tags
+        self.tree.tag_configure("active_row", foreground=COLORS["success"])
+        self.tree.tag_configure("inactive_row", foreground=COLORS["muted"])
+        self.tree.tag_configure("odd", background="#1a2030")
+        self.tree.tag_configure("even", background="#1d2430")
+
         # ── Action buttons ──
         ttk.Separator(self, bootstyle="secondary").pack(fill="x", padx=12, pady=4)
 
-        action_frame = ttk.Frame(self)
+        action_frame = ttk.Frame(self, bootstyle="dark")
         action_frame.pack(fill="x", padx=12, pady=(0, 8))
 
-        ttk.Button(
-            action_frame,
-            text="Start",
-            bootstyle=SUCCESS,
-            command=self._start,
-            width=10,
-        ).pack(side="left", padx=4)
-
-        ttk.Button(
-            action_frame,
-            text="Stop",
-            bootstyle=DANGER,
-            command=self._stop,
-            width=10,
-        ).pack(side="left", padx=4)
-
-        ttk.Button(
-            action_frame,
-            text="Remove",
-            bootstyle=WARNING,
-            command=self._remove,
-            width=10,
-        ).pack(side="left", padx=4)
-
-        ttk.Button(
-            action_frame,
-            text="Refresh",
-            bootstyle=INFO,
-            command=self.refresh,
-            width=10,
-        ).pack(side="left", padx=4)
+        ActionButton(action_frame, text="▶ Connect", bootstyle=SUCCESS, command=self._start, width=12).pack(side="left", padx=4)
+        ActionButton(action_frame, text="⏹ Disconnect", bootstyle=DANGER, command=self._stop, width=12).pack(side="left", padx=4)
+        ActionButton(action_frame, text="🗑 Remove", bootstyle=WARNING, command=self._remove, width=12).pack(side="left", padx=4)
+        ActionButton(action_frame, text="🔄 Refresh", bootstyle=INFO, command=self.refresh, width=12).pack(side="left", padx=4)
 
         # ── Status bar ──
         self.status_var = tk.StringVar(value="Cargando...")
-        status_bar = ttk.Frame(self)
+        status_bar = ttk.Frame(self, bootstyle="dark")
         status_bar.pack(fill="x", padx=12, pady=(0, 6))
 
-        self.status_dot = ttk.Label(
-            status_bar, text="\u25cf", font=("Segoe UI", 10), foreground="#888"
-        )
-        self.status_dot.pack(side="left", padx=(0, 4))
+        self.status_dot = StatusDot(status_bar, state="stopped")
+        self.status_dot.pack(side="left", padx=(0, 6))
 
         ttk.Label(
-            status_bar, textvariable=self.status_var, foreground="#888"
+            status_bar, textvariable=self.status_var, foreground=COLORS["muted"],
+            font=("Segoe UI", 9), bootstyle="dark",
         ).pack(side="left")
 
     # ── Datos ────────────────────────────────────────────────────────────
@@ -137,38 +120,45 @@ class TunnelsTab(ttk.Frame):
         try:
             tunnels = self.ctx.forwarding.list_tunnels()
             self.tree.delete(*self.tree.get_children())
-            for t in tunnels:
+            connected_count = 0
+            disconnected_count = 0
+
+            for idx, t in enumerate(tunnels):
                 is_active = t.get("active", False)
-                status = "ACTIVO" if is_active else "Inactivo"
-                auto = "Si" if t.get("auto_reconnect") else "No"
+                status = "\u25cf ACTIVO" if is_active else "\u25cb Inactivo"
+                auto = "\u2713 Si" if t.get("auto_reconnect") else "\u2717 No"
+                row_tag = "active_row" if is_active else "inactive_row"
+                alt_tag = "odd" if idx % 2 else "even"
+
                 self.tree.insert(
-                    "",
-                    "end",
+                    "", "end",
                     values=(
                         t.get("name", ""),
                         t.get("remote_host", ""),
                         t.get("remote_port", ""),
-                        t.get("local_port", ""),
                         t.get("ssh_user", ""),
-                        t.get("ssh_host", ""),
                         auto,
                         status,
                     ),
+                    tags=(row_tag, alt_tag),
                 )
-            active = sum(1 for t in tunnels if t.get("active"))
-            total = len(tunnels)
-            self.status_var.set(f"{active}/{total} tunnels activos")
+                if is_active:
+                    connected_count += 1
+                else:
+                    disconnected_count += 1
 
-            # Update status dot color
-            if active > 0:
-                self.status_dot.configure(foreground="#28a745")
-            else:
-                self.status_dot.configure(foreground="#888")
+            # Update stats cards
+            self.card_total.set_value(str(len(tunnels)))
+            self.card_connected.set_value(str(connected_count))
+            self.card_disconnected.set_value(str(disconnected_count))
+
+            self.status_var.set(f"{connected_count}/{len(tunnels)} tunnels activos")
+            self.status_dot.set_state("running" if connected_count > 0 else "stopped")
 
         except Exception as e:  # noqa: BLE001
             log.exception("refresh tunnels fallo")
-            self.status_var.set(f"error: {e}")
-            self.status_dot.configure(foreground="#dc3545")
+            self.status_var.set(f"Error: {e}")
+            self.status_dot.set_state("error")
         finally:
             if self.winfo_exists():
                 self._job = self.after(5000, self.refresh)
@@ -303,10 +293,10 @@ class TunnelsTab(ttk.Frame):
 
         btn_frame = ttk.Frame(dlg)
         btn_frame.pack(pady=12)
-        ttk.Button(
+        ActionButton(
             btn_frame, text="Agregar", command=_ok, bootstyle=SUCCESS, width=14
         ).pack(side="left", padx=6)
-        ttk.Button(
+        ActionButton(
             btn_frame, text="Cancelar", command=dlg.destroy, bootstyle=DANGER, width=14
         ).pack(side="left", padx=6)
 

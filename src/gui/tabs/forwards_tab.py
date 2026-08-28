@@ -9,6 +9,7 @@ from ttkbootstrap.constants import *
 
 from src.core.config import ForwardItem
 from src.core.logger import get_logger
+from src.gui.widgets import StatCard, StatusDot, ActionButton, SectionHeader, COLORS
 
 log = get_logger("gui.forwards")
 
@@ -26,43 +27,43 @@ class ForwardsTab(ttk.Frame):
     # ── Construccion de la interfaz ──────────────────────────────────────
     def _build(self) -> None:
         # ── Header ──
-        header = ttk.Frame(self)
+        header = ttk.Frame(self, bootstyle="dark")
         header.pack(fill="x", padx=12, pady=(10, 4))
 
-        ttk.Label(
-            header,
-            text="Port Forwards",
-            font=("Segoe UI", 16, "bold"),
-        ).pack(side="left")
+        SectionHeader(header, text="\U0001f504 Port Forwards").pack(side="left")
 
-        ttk.Button(
-            header,
-            text="+ Add Forward",
-            bootstyle=SUCCESS,
-            command=self._add_dialog,
-            width=16,
+        ActionButton(
+            header, text="+ Add Forward", bootstyle=SUCCESS,
+            command=self._add_dialog, width=16,
         ).pack(side="right", padx=4)
 
-        ttk.Button(
-            header,
-            text="Apply All",
-            bootstyle="info-outline",
-            command=self._apply_all,
-            width=12,
+        ActionButton(
+            header, text="Apply All", bootstyle="info-outline",
+            command=self._apply_all, width=12,
         ).pack(side="right", padx=4)
 
-        ttk.Button(
-            header,
-            text="Clear All",
-            bootstyle=(DANGER, OUTLINE),
-            command=self._clear_all,
-            width=12,
+        ActionButton(
+            header, text="Clear All", bootstyle=(DANGER, OUTLINE),
+            command=self._clear_all, width=12,
         ).pack(side="right", padx=4)
+
+        # ── Stats Cards ──
+        cards_frame = ttk.Frame(self, bootstyle="dark")
+        cards_frame.pack(fill="x", padx=12, pady=(0, 8))
+
+        self.card_total = StatCard(cards_frame, value="0", label="Total", bootstyle="info", icon="\U0001f4e6")
+        self.card_total.pack(side="left", fill="x", expand=True, padx=(0, 6))
+
+        self.card_active = StatCard(cards_frame, value="0", label="Active", bootstyle="success", icon="\u25b6")
+        self.card_active.pack(side="left", fill="x", expand=True, padx=(0, 6))
+
+        self.card_inactive = StatCard(cards_frame, value="0", label="Inactive", bootstyle="secondary", icon="\u23f9")
+        self.card_inactive.pack(side="left", fill="x", expand=True)
 
         ttk.Separator(self, bootstyle="secondary").pack(fill="x", padx=12, pady=4)
 
         # ── Treeview ──
-        tree_frame = ttk.Frame(self)
+        tree_frame = ttk.Frame(self, bootstyle="dark")
         tree_frame.pack(fill="both", expand=True, padx=12, pady=4)
 
         columns = [
@@ -94,56 +95,34 @@ class ForwardsTab(ttk.Frame):
         tree_frame.rowconfigure(0, weight=1)
         tree_frame.columnconfigure(0, weight=1)
 
+        # Tags para filas alternas
+        self.tree.tag_configure("active_row", foreground=COLORS["success"])
+        self.tree.tag_configure("inactive_row", foreground=COLORS["muted"])
+        self.tree.tag_configure("odd", background="#1a2030")
+        self.tree.tag_configure("even", background="#1d2430")
+
         # ── Action buttons ──
         ttk.Separator(self, bootstyle="secondary").pack(fill="x", padx=12, pady=4)
 
-        action_frame = ttk.Frame(self)
+        action_frame = ttk.Frame(self, bootstyle="dark")
         action_frame.pack(fill="x", padx=12, pady=(0, 8))
 
-        ttk.Button(
-            action_frame,
-            text="Start",
-            bootstyle=SUCCESS,
-            command=self._start,
-            width=10,
-        ).pack(side="left", padx=4)
-
-        ttk.Button(
-            action_frame,
-            text="Stop",
-            bootstyle=DANGER,
-            command=self._stop,
-            width=10,
-        ).pack(side="left", padx=4)
-
-        ttk.Button(
-            action_frame,
-            text="Remove",
-            bootstyle=WARNING,
-            command=self._remove,
-            width=10,
-        ).pack(side="left", padx=4)
-
-        ttk.Button(
-            action_frame,
-            text="Refresh",
-            bootstyle=INFO,
-            command=self.refresh,
-            width=10,
-        ).pack(side="left", padx=4)
+        ActionButton(action_frame, text="▶ Start", bootstyle=SUCCESS, command=self._start, width=10).pack(side="left", padx=4)
+        ActionButton(action_frame, text="⏹ Stop", bootstyle=DANGER, command=self._stop, width=10).pack(side="left", padx=4)
+        ActionButton(action_frame, text="🗑 Remove", bootstyle=WARNING, command=self._remove, width=10).pack(side="left", padx=4)
+        ActionButton(action_frame, text="🔄 Refresh", bootstyle=INFO, command=self.refresh, width=10).pack(side="left", padx=4)
 
         # ── Status bar ──
         self.status_var = tk.StringVar(value="Cargando...")
-        status_bar = ttk.Frame(self)
+        status_bar = ttk.Frame(self, bootstyle="dark")
         status_bar.pack(fill="x", padx=12, pady=(0, 6))
 
-        self.status_dot = ttk.Label(
-            status_bar, text="\u25cf", font=("Segoe UI", 10), foreground="#888"
-        )
-        self.status_dot.pack(side="left", padx=(0, 4))
+        self.status_dot = StatusDot(status_bar, state="stopped")
+        self.status_dot.pack(side="left", padx=(0, 6))
 
         ttk.Label(
-            status_bar, textvariable=self.status_var, foreground="#888"
+            status_bar, textvariable=self.status_var, foreground=COLORS["muted"],
+            font=("Segoe UI", 9), bootstyle="dark",
         ).pack(side="left")
 
     # ── Datos ────────────────────────────────────────────────────────────
@@ -151,12 +130,17 @@ class ForwardsTab(ttk.Frame):
         try:
             forwards = self.ctx.forwarding.list_forwards()
             self.tree.delete(*self.tree.get_children())
-            for f in forwards:
+            active_count = 0
+            inactive_count = 0
+
+            for idx, f in enumerate(forwards):
                 is_active = f.get("active", False)
-                status = "ACTIVO" if is_active else "Inactivo"
+                status = "\u25cf ACTIVO" if is_active else "\u25cb Inactivo"
+                row_tag = "active_row" if is_active else "inactive_row"
+                alt_tag = "odd" if idx % 2 else "even"
+
                 self.tree.insert(
-                    "",
-                    "end",
+                    "", "end",
                     values=(
                         f.get("name", ""),
                         f.get("local_port", ""),
@@ -165,21 +149,25 @@ class ForwardsTab(ttk.Frame):
                         "Si" if f.get("enabled") else "No",
                         status,
                     ),
+                    tags=(row_tag, alt_tag),
                 )
-            active = sum(1 for f in forwards if f.get("active"))
-            total = len(forwards)
-            self.status_var.set(f"{active}/{total} forwards activos")
+                if is_active:
+                    active_count += 1
+                else:
+                    inactive_count += 1
 
-            # Update status dot color
-            if active > 0:
-                self.status_dot.configure(foreground="#28a745")
-            else:
-                self.status_dot.configure(foreground="#888")
+            # Update stats cards
+            self.card_total.set_value(str(len(forwards)))
+            self.card_active.set_value(str(active_count))
+            self.card_inactive.set_value(str(inactive_count))
+
+            self.status_var.set(f"{active_count}/{len(forwards)} forwards activos")
+            self.status_dot.set_state("running" if active_count > 0 else "stopped")
 
         except Exception as e:  # noqa: BLE001
             log.exception("refresh forwards fallo")
-            self.status_var.set(f"error: {e}")
-            self.status_dot.configure(foreground="#dc3545")
+            self.status_var.set(f"Error: {e}")
+            self.status_dot.set_state("error")
         finally:
             if self.winfo_exists():
                 self._job = self.after(5000, self.refresh)
@@ -277,10 +265,10 @@ class ForwardsTab(ttk.Frame):
 
         btn_frame = ttk.Frame(dlg)
         btn_frame.pack(pady=12)
-        ttk.Button(
+        ActionButton(
             btn_frame, text="Agregar", command=_ok, bootstyle=SUCCESS, width=14
         ).pack(side="left", padx=6)
-        ttk.Button(
+        ActionButton(
             btn_frame, text="Cancelar", command=dlg.destroy, bootstyle=DANGER, width=14
         ).pack(side="left", padx=6)
 
