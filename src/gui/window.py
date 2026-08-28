@@ -9,12 +9,14 @@ from src.gui.tabs import (
     autostart_tab,
     config_tab,
     dashboard_tab,
+    forwards_tab,
     logs_tab,
     monitor_tab,
     profiles_tab,
     resources_tab,
     scheduler_tab,
     settings_tab,
+    tunnels_tab,
 )
 
 
@@ -34,6 +36,8 @@ class MainWindow:
             "dashboard": dashboard_tab.DashboardTab(nb, self.ctx),
             "resources": resources_tab.ResourcesTab(nb, self.ctx),
             "monitor": monitor_tab.MonitorTab(nb, self.ctx),
+            "forwards": forwards_tab.ForwardsTab(nb, self.ctx),
+            "tunnels": tunnels_tab.TunnelsTab(nb, self.ctx),
             "config": config_tab.ConfigTab(nb, self.ctx),
             "autostart": autostart_tab.AutoStartTab(nb, self.ctx),
             "scheduler": scheduler_tab.SchedulerTab(nb, self.ctx),
@@ -45,6 +49,8 @@ class MainWindow:
             "dashboard": "Dashboard",
             "resources": "Recursos",
             "monitor": "Monitor",
+            "forwards": "Forwards",
+            "tunnels": "Tunnels",
             "config": "Configuracion",
             "autostart": "Autoarranque",
             "scheduler": "Programador",

@@ -24,6 +24,14 @@ SENSITIVE_TOOLS: frozenset[str] = frozenset({
     "schedule_add",
     "profile_apply",
     "run_command",
+    "forward_add",
+    "forward_remove",
+    "forward_start",
+    "forward_stop",
+    "tunnel_add",
+    "tunnel_remove",
+    "tunnel_start",
+    "tunnel_stop",
 })
 
 
@@ -44,6 +52,18 @@ def get_tool_defs() -> list[dict]:
         {"name": "profile_apply", "description": "Aplica un perfil", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
         {"name": "run_command", "description": "Ejecuta un comando en una distro", "inputSchema": {"type": "object", "properties": {"distro": {"type": "string"}, "cmd": {"type": "string"}}, "required": ["distro", "cmd"]}},
         {"name": "doctor", "description": "Diagnostico del entorno WSL", "inputSchema": {"type": "object", "properties": {}}},
+        # --- forwards ---
+        {"name": "list_forwards", "description": "Lista port-forwards activos", "inputSchema": {"type": "object", "properties": {}}},
+        {"name": "forward_add", "description": "Agrega un forward Windows->WSL", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}, "local_port": {"type": "integer"}, "wsl_port": {"type": "integer"}, "wsl_ip": {"type": "string"}, "enabled": {"type": "boolean"}}, "required": ["name", "local_port", "wsl_port"]}},
+        {"name": "forward_remove", "description": "Elimina un forward", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
+        {"name": "forward_start", "description": "Activa un forward (netsh portproxy)", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
+        {"name": "forward_stop", "description": "Desactiva un forward", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
+        # --- tunnels ---
+        {"name": "list_tunnels", "description": "Lista tunnels SSH activos", "inputSchema": {"type": "object", "properties": {}}},
+        {"name": "tunnel_add", "description": "Agrega un tunnel SSH", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}, "remote_host": {"type": "string"}, "remote_port": {"type": "integer"}, "local_port": {"type": "integer"}, "ssh_user": {"type": "string"}, "ssh_host": {"type": "string"}, "auto_reconnect": {"type": "boolean"}}, "required": ["name", "remote_host"]}},
+        {"name": "tunnel_remove", "description": "Elimina un tunnel", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
+        {"name": "tunnel_start", "description": "Inicia un tunnel SSH", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
+        {"name": "tunnel_stop", "description": "Detiene un tunnel SSH", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
     ]
 
 
@@ -153,3 +173,41 @@ class McpTools:
         except Exception as e:  # noqa: BLE001
             checks.append({"check": "distros", "ok": False, "detail": str(e)})
         return {"ok": all(c["ok"] for c in checks), "checks": checks}
+
+    # --- forwards tools -----------------------------------------------------
+
+    def tool_list_forwards(self) -> dict:
+        return {"forwards": self.ctx.forwarding.list_forwards()}
+
+    def tool_forward_add(self, name: str, local_port: int, wsl_port: int, wsl_ip: str = "127.0.0.1", enabled: bool = True) -> dict:
+        from src.core.config import ForwardItem
+        fwd = ForwardItem(name=name, local_port=local_port, wsl_port=wsl_port, wsl_ip=wsl_ip, enabled=enabled)
+        return self.ctx.forwarding.add_forward(fwd)
+
+    def tool_forward_remove(self, name: str) -> dict:
+        return self.ctx.forwarding.remove_forward(name)
+
+    def tool_forward_start(self, name: str) -> dict:
+        return self.ctx.forwarding.start_forward(name)
+
+    def tool_forward_stop(self, name: str) -> dict:
+        return self.ctx.forwarding.stop_forward(name)
+
+    # --- tunnels tools ------------------------------------------------------
+
+    def tool_list_tunnels(self) -> dict:
+        return {"tunnels": self.ctx.forwarding.list_tunnels()}
+
+    def tool_tunnel_add(self, name: str, remote_host: str, remote_port: int = 22, local_port: int = 2222, ssh_user: str = "", ssh_host: str = "", auto_reconnect: bool = True) -> dict:
+        from src.core.config import TunnelCfg
+        tun = TunnelCfg(name=name, remote_host=remote_host, remote_port=remote_port, local_port=local_port, ssh_user=ssh_user, ssh_host=ssh_host, auto_reconnect=auto_reconnect)
+        return self.ctx.forwarding.add_tunnel(tun)
+
+    def tool_tunnel_remove(self, name: str) -> dict:
+        return self.ctx.forwarding.remove_tunnel(name)
+
+    def tool_tunnel_start(self, name: str) -> dict:
+        return self.ctx.forwarding.start_tunnel(name)
+
+    def tool_tunnel_stop(self, name: str) -> dict:
+        return self.ctx.forwarding.stop_tunnel(name)

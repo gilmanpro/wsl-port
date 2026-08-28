@@ -6,11 +6,12 @@ import re
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from pydantic import BaseModel
 
 from src.api.auth import AuthService
 from src.cli.common import CliContext
-from src.core.config import GlobalLimits, PerDistroLimits, ScheduleTask, snapshot_dir
+from src.core.config import ForwardItem, GlobalLimits, PerDistroLimits, ScheduleTask, TunnelCfg, snapshot_dir
 from src.core.profiles import ProfileService
 from src.core.scheduler import Scheduler
 from src.core.watcher import Watcher
@@ -257,3 +258,117 @@ def profiles_apply(ctx: CliContext = Ctx, name: str = ...):
 def profiles_capture(ctx: CliContext = Ctx, name: str = ...):
     item = ProfileService(ctx.store, ctx.wsl).capture(name)
     return {"ok": True, "profile": item.name, "distros_to_start": item.distros_to_start}
+
+
+class ForwardAddBody(BaseModel):
+    name: str
+    local_port: int
+    wsl_port: int
+    wsl_ip: str = "127.0.0.1"
+    enabled: bool = True
+
+
+class TunnelAddBody(BaseModel):
+    name: str
+    remote_host: str
+    remote_port: int = 22
+    local_port: int = 2222
+    ssh_user: str = ""
+    ssh_host: str = ""
+    auto_reconnect: bool = True
+    enabled: bool = True
+
+
+# ------------------------------------------------------------- forwards ---
+
+@router.get("/forwards", dependencies=[require("read")])
+def forwards_list(ctx: CliContext = Ctx):
+    return {"forwards": ctx.forwarding.list_forwards()}
+
+
+@router.post("/forwards", dependencies=[require("write")])
+def forwards_add(body: ForwardAddBody = Body(...), ctx: CliContext = Ctx):
+    fwd = ForwardItem(
+        name=body.name,
+        local_port=body.local_port,
+        wsl_port=body.wsl_port,
+        wsl_ip=body.wsl_ip,
+        enabled=body.enabled,
+    )
+    r = ctx.forwarding.add_forward(fwd)
+    if not r.get("ok"):
+        raise HTTPException(status_code=400, detail=r.get("error", "error"))
+    return r
+
+
+@router.delete("/forwards/{name}", dependencies=[require("write")])
+def forwards_remove(name: str, ctx: CliContext = Ctx):
+    r = ctx.forwarding.remove_forward(name)
+    if not r.get("ok"):
+        raise HTTPException(status_code=404, detail=r.get("error", "no encontrado"))
+    return r
+
+
+@router.post("/forwards/{name}/start", dependencies=[require("write")])
+def forwards_start(name: str, ctx: CliContext = Ctx):
+    r = ctx.forwarding.start_forward(name)
+    if not r.get("ok"):
+        raise HTTPException(status_code=400, detail=r.get("error", "error"))
+    return r
+
+
+@router.post("/forwards/{name}/stop", dependencies=[require("write")])
+def forwards_stop(name: str, ctx: CliContext = Ctx):
+    r = ctx.forwarding.stop_forward(name)
+    if not r.get("ok"):
+        raise HTTPException(status_code=400, detail=r.get("error", "error"))
+    return r
+
+
+# -------------------------------------------------------------- tunnels ---
+
+@router.get("/tunnels", dependencies=[require("read")])
+def tunnels_list(ctx: CliContext = Ctx):
+    return {"tunnels": ctx.forwarding.list_tunnels()}
+
+
+@router.post("/tunnels", dependencies=[require("write")])
+def tunnels_add(body: TunnelAddBody = Body(...), ctx: CliContext = Ctx):
+    tun = TunnelCfg(
+        name=body.name,
+        remote_host=body.remote_host,
+        remote_port=body.remote_port,
+        local_port=body.local_port,
+        ssh_user=body.ssh_user,
+        ssh_host=body.ssh_host,
+        auto_reconnect=body.auto_reconnect,
+        enabled=body.enabled,
+    )
+    r = ctx.forwarding.add_tunnel(tun)
+    if not r.get("ok"):
+        raise HTTPException(status_code=400, detail=r.get("error", "error"))
+    return r
+
+
+@router.delete("/tunnels/{name}", dependencies=[require("write")])
+def tunnels_remove(name: str, ctx: CliContext = Ctx):
+    r = ctx.forwarding.remove_tunnel(name)
+    if not r.get("ok"):
+        raise HTTPException(status_code=404, detail=r.get("error", "no encontrado"))
+    return r
+
+
+@router.post("/tunnels/{name}/start", dependencies=[require("write")])
+def tunnels_start(name: str, ctx: CliContext = Ctx):
+    r = ctx.forwarding.start_tunnel(name)
+    if not r.get("ok"):
+        raise HTTPException(status_code=400, detail=r.get("error", "error"))
+    return r
+
+
+@router.post("/tunnels/{name}/stop", dependencies=[require("write")])
+def tunnels_stop(name: str, ctx: CliContext = Ctx):
+    r = ctx.forwarding.stop_tunnel(name)
+    if not r.get("ok"):
+        raise HTTPException(status_code=400, detail=r.get("error", "error"))
+    return r

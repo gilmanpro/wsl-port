@@ -46,6 +46,37 @@
     "active": null,
     "items": []
   },
+  "forwarding": {
+    "enabled": false,
+    "forwards": [
+      {
+        "name": "web-dev",
+        "local_port": 3000,
+        "wsl_port": 3000,
+        "wsl_ip": "127.0.0.1",
+        "enabled": true
+      },
+      {
+        "name": "db-postgres",
+        "local_port": 5432,
+        "wsl_port": 5432,
+        "wsl_ip": "127.0.0.1",
+        "enabled": false
+      }
+    ],
+    "tunnels": [
+      {
+        "name": "tunnel-vps-web",
+        "remote_host": "vps.example.com",
+        "remote_port": 22,
+        "local_port": 2222,
+        "ssh_user": "tunnel",
+        "ssh_host": "",
+        "auto_reconnect": true,
+        "enabled": true
+      }
+    ]
+  },
   "ui": {
     "start_minimized": false,
     "close_to_tray": true,

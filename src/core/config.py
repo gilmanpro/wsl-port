@@ -196,6 +196,52 @@ class OnCloseCfg(BaseModel):
     stop_distros: bool = False
 
 
+# --------------------------------------------------------------------------
+# Port-Forwarding models
+# --------------------------------------------------------------------------
+
+class ForwardItem(BaseModel):
+    """Un forward individual Windows -> WSL."""
+    name: str
+    local_port: int
+    wsl_port: int
+    wsl_ip: str = "127.0.0.1"
+    enabled: bool = True
+
+    @field_validator("local_port", "wsl_port")
+    @classmethod
+    def validate_port(cls, v: int) -> int:
+        if not (1 <= v <= 65535):
+            raise ValueError(f"puerto fuera de rango 1-65535: {v}")
+        return v
+
+
+class TunnelCfg(BaseModel):
+    """Tunnel SSH hacia un host remoto."""
+    name: str
+    remote_host: str
+    remote_port: int = 22
+    local_port: int = 2222
+    ssh_user: str = ""
+    ssh_host: str = ""
+    auto_reconnect: bool = True
+    enabled: bool = True
+
+    @field_validator("remote_port", "local_port")
+    @classmethod
+    def validate_port(cls, v: int) -> int:
+        if not (1 <= v <= 65535):
+            raise ValueError(f"puerto fuera de rango 1-65535: {v}")
+        return v
+
+
+class ForwardCfg(BaseModel):
+    """Seccion de port-forwarding en config.json."""
+    enabled: bool = False
+    forwards: list[ForwardItem] = Field(default_factory=list)
+    tunnels: list[TunnelCfg] = Field(default_factory=list)
+
+
 class AppConfig(BaseModel):
     version: int = 1
     windows: WindowsCfg = Field(default_factory=WindowsCfg)
@@ -205,6 +251,7 @@ class AppConfig(BaseModel):
     snapshots: SnapshotsCfg = Field(default_factory=SnapshotsCfg)
     scheduler: SchedulerCfg = Field(default_factory=SchedulerCfg)
     profiles: ProfilesCfg = Field(default_factory=ProfilesCfg)
+    forwarding: ForwardCfg = Field(default_factory=ForwardCfg)
     ui: UiCfg = Field(default_factory=UiCfg)
     api: ApiCfg = Field(default_factory=ApiCfg)
     mcp: McpCfg = Field(default_factory=McpCfg)

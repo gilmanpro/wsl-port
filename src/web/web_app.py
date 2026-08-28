@@ -55,6 +55,12 @@ INDEX_HTML = """<!doctype html>
 <h2 style="font-size:15px;margin-top:22px">Metricas</h2>
 <table id="metrics"><thead><tr><th>Distro</th><th>Estado</th><th>RAM usada/total</th><th>%</th><th>CPU</th><th>Uptime</th></tr></thead><tbody></tbody></table>
 
+<h2 style="font-size:15px;margin-top:22px">Port Forwards (Windows -> WSL)</h2>
+<table id="fwd-table"><thead><tr><th>Nombre</th><th>Puerto Local</th><th>WSL IP</th><th>WSL Port</th><th>Habilitado</th><th>Estado</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+
+<h2 style="font-size:15px;margin-top:22px">Tunnels SSH</h2>
+<table id="tun-table"><thead><tr><th>Nombre</th><th>Host Remoto</th><th>Puerto Remoto</th><th>Puerto Local</th><th>Estado</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+
 <h2 style="font-size:15px;margin-top:22px">Alertas recientes</h2>
 <div id="alerts"><span class="muted">sin alertas</span></div>
 
@@ -104,6 +110,24 @@ async function load() {
     $('#alerts').innerHTML = al.alerts.length ? al.alerts.slice(0, 8).map(a =>
       `<div class="alert"><b>${esc(a.tipo)}</b> — ${esc(a.message)} <span class="muted">(${new Date(a.ts*1000).toLocaleTimeString()})</span></div>`
     ).join('') : '<span class="muted">sin alertas</span>';
+
+    // Forwards
+    const fw = await api('/api/forwards');
+    const fwdBody = fw.forwards || [];
+    $('#fwd-table tbody').innerHTML = fwdBody.length ? fwdBody.map(f => `<tr>
+      <td>${esc(f.name)}</td><td>${f.local_port}</td><td>${esc(f.wsl_ip)}</td><td>${f.wsl_port}</td>
+      <td>${f.enabled ? 'Si' : 'No'}</td><td>${f.active ? '<span class="dot on"></span> Activo' : '<span class="dot off"></span> Inactivo'}</td>
+      <td>${f.active ? `<button class="warn" onclick="fwdAct('stop','${esc(f.name)}')">Detener</button>` : `<button class="ok" onclick="fwdAct('start','${esc(f.name)}')">Iniciar</button>`}</td>
+    </tr>`).join('') : '<tr><td colspan="7" class="muted">sin forwards configurados</td></tr>';
+
+    // Tunnels
+    const tn = await api('/api/tunnels');
+    const tunBody = tn.tunnels || [];
+    $('#tun-table tbody').innerHTML = tunBody.length ? tunBody.map(t => `<tr>
+      <td>${esc(t.name)}</td><td>${esc(t.remote_host)}</td><td>${t.remote_port}</td><td>${t.local_port}</td>
+      <td>${t.active ? '<span class="dot on"></span> Activo' : '<span class="dot off"></span> Inactivo'}</td>
+      <td>${t.active ? `<button class="warn" onclick="tunAct('stop','${esc(t.name)}')">Detener</button>` : `<button class="ok" onclick="tunAct('start','${esc(t.name)}')">Iniciar</button>`}</td>
+    </tr>`).join('') : '<tr><td colspan="6" class="muted">sin tunnels configurados</td></tr>';
   } catch (e) {
     $('#ts').textContent = 'error: ' + e.message;
   }
@@ -113,6 +137,18 @@ async function act(action, name) {
   try {
     await api('/api/distros/' + encodeURIComponent(name) + '/' + action, 'POST');
   } catch (e) { alert(action + ' ' + name + ': ' + e.message); }
+  setTimeout(load, 800);
+}
+async function fwdAct(action, name) {
+  try {
+    await api('/api/forwards/' + encodeURIComponent(name) + '/' + action, 'POST');
+  } catch (e) { alert('forward ' + action + ': ' + e.message); }
+  setTimeout(load, 800);
+}
+async function tunAct(action, name) {
+  try {
+    await api('/api/tunnels/' + encodeURIComponent(name) + '/' + action, 'POST');
+  } catch (e) { alert('tunnel ' + action + ': ' + e.message); }
   setTimeout(load, 800);
 }
 load();
@@ -303,5 +339,71 @@ def create_web_app(ctx) -> FastAPI:
         if not r.ok:
             raise HTTPException(status_code=500, detail=r.error)
         return {"ok": True}
+
+    # --- forwards ---
+
+    @app.get("/api/forwards")
+    def forwards_list():
+        c = get_ctx()
+        return {"forwards": c.forwarding.list_forwards()}
+
+    @app.post("/api/forwards")
+    def forwards_add(name: str = Form(...), local_port: int = Form(...), wsl_port: int = Form(...), wsl_ip: str = Form("127.0.0.1"), enabled: bool = Form(True)):
+        from src.core.config import ForwardItem
+        c = get_ctx()
+        fwd = ForwardItem(name=name, local_port=local_port, wsl_port=wsl_port, wsl_ip=wsl_ip, enabled=enabled)
+        r = c.forwarding.add_forward(fwd)
+        if not r.get("ok"):
+            raise HTTPException(status_code=400, detail=r.get("error", "error"))
+        return r
+
+    @app.post("/api/forwards/{name}/start")
+    def forwards_start(name: str):
+        c = get_ctx()
+        r = c.forwarding.start_forward(name)
+        if not r.get("ok"):
+            raise HTTPException(status_code=400, detail=r.get("error", "error"))
+        return r
+
+    @app.post("/api/forwards/{name}/stop")
+    def forwards_stop(name: str):
+        c = get_ctx()
+        r = c.forwarding.stop_forward(name)
+        if not r.get("ok"):
+            raise HTTPException(status_code=400, detail=r.get("error", "error"))
+        return r
+
+    # --- tunnels ---
+
+    @app.get("/api/tunnels")
+    def tunnels_list():
+        c = get_ctx()
+        return {"tunnels": c.forwarding.list_tunnels()}
+
+    @app.post("/api/tunnels")
+    def tunnels_add(name: str = Form(...), remote_host: str = Form(...), remote_port: int = Form(22), local_port: int = Form(2222), ssh_user: str = Form(""), ssh_host: str = Form(""), auto_reconnect: bool = Form(True), enabled: bool = Form(True)):
+        from src.core.config import TunnelCfg
+        c = get_ctx()
+        tun = TunnelCfg(name=name, remote_host=remote_host, remote_port=remote_port, local_port=local_port, ssh_user=ssh_user, ssh_host=ssh_host, auto_reconnect=auto_reconnect, enabled=enabled)
+        r = c.forwarding.add_tunnel(tun)
+        if not r.get("ok"):
+            raise HTTPException(status_code=400, detail=r.get("error", "error"))
+        return r
+
+    @app.post("/api/tunnels/{name}/start")
+    def tunnels_start(name: str):
+        c = get_ctx()
+        r = c.forwarding.start_tunnel(name)
+        if not r.get("ok"):
+            raise HTTPException(status_code=400, detail=r.get("error", "error"))
+        return r
+
+    @app.post("/api/tunnels/{name}/stop")
+    def tunnels_stop(name: str):
+        c = get_ctx()
+        r = c.forwarding.stop_tunnel(name)
+        if not r.get("ok"):
+            raise HTTPException(status_code=400, detail=r.get("error", "error"))
+        return r
 
     return app

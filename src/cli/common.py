@@ -8,6 +8,7 @@ from src.core.config import ConfigError, ConfigStore
 from src.core.event_bus import EventBus
 from src.core.metrics_store import MetricsStore
 from src.core.notifier import notify
+from src.core.forwarding_service import ForwardingService
 from src.providers.autostart_provider import AutoStartProvider
 from src.providers.resource_provider import ResourceProvider
 from src.providers.wsl_config_provider import WslConfigProvider
@@ -34,6 +35,7 @@ class CliContext:
         self.resources = ResourceProvider(self.store, self.wsl)
         self.autostart = AutoStartProvider()
         self.wsl_config = WslConfigProvider()
+        self.forwarding = ForwardingService(self.store, self.config)
 
     def emit_json(self, data: object) -> None:
         print(json.dumps(data, indent=2, ensure_ascii=False, default=str))

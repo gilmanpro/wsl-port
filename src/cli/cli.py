@@ -11,7 +11,7 @@ from typing import Optional
 import typer
 
 from src import __version__
-from src.cli import commands_distros, commands_limits, commands_monitor, commands_schedule, commands_ux
+from src.cli import commands_distros, commands_forwards, commands_limits, commands_monitor, commands_schedule, commands_tunnels, commands_ux
 from src.cli.common import new_context
 
 log = logging.getLogger("wslmanager.cli")
@@ -31,6 +31,8 @@ app.add_typer(commands_ux.config_app, name="config", help="Gestion del config.js
 app.add_typer(commands_ux.autostart_app, name="autostart", help="Autoarranque de distros (W5)")
 app.add_typer(commands_ux.api_app, name="api", help="Gestion de la API REST (P1)")
 app.add_typer(commands_ux.web_app, name="web", help="Panel web local (M7, P2)")
+app.add_typer(commands_forwards.app, name="forwards", help="Forwards Windows -> WSL (port-forwarding)")
+app.add_typer(commands_tunnels.app, name="tunnels", help="Tunnels SSH remotos (port-forwarding)")
 
 
 @app.callback()
