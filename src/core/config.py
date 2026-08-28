@@ -197,6 +197,29 @@ class OnCloseCfg(BaseModel):
 
 
 # --------------------------------------------------------------------------
+# Publish (Publicar a Internet) models
+# --------------------------------------------------------------------------
+
+class VpsCfg(BaseModel):
+    id: str
+    host: str
+    user: str = "root"
+    port: int = 22
+    identity_file: str = ""
+
+    @field_validator("port")
+    @classmethod
+    def validate_port(cls, v: int) -> int:
+        if not (1 <= v <= 65535):
+            raise ValueError(f"puerto fuera de rango 1-65535: {v}")
+        return v
+
+
+class PublishCfg(BaseModel):
+    vps_list: list[VpsCfg] = Field(default_factory=list)
+
+
+# --------------------------------------------------------------------------
 # Port-Forwarding models
 # --------------------------------------------------------------------------
 
@@ -252,6 +275,7 @@ class AppConfig(BaseModel):
     scheduler: SchedulerCfg = Field(default_factory=SchedulerCfg)
     profiles: ProfilesCfg = Field(default_factory=ProfilesCfg)
     forwarding: ForwardCfg = Field(default_factory=ForwardCfg)
+    publish: PublishCfg = Field(default_factory=PublishCfg)
     ui: UiCfg = Field(default_factory=UiCfg)
     api: ApiCfg = Field(default_factory=ApiCfg)
     mcp: McpCfg = Field(default_factory=McpCfg)
@@ -323,3 +347,24 @@ class ConfigStore:
             return AppConfig.model_validate(data)
         except (json.JSONDecodeError, ValidationError, OSError) as e:
             raise ConfigError(f"config invalida en {p}: {e}") from e
+
+    # -- VPS helpers ----------------------------------------------------------
+
+    def get_vps(self, vps_id: str) -> VpsCfg | None:
+        return next((v for v in self.get().publish.vps_list if v.id == vps_id), None)
+
+    def add_vps(self, vps: VpsCfg) -> None:
+        if self.get_vps(vps.id):
+            raise ConfigError(f"vps '{vps.id}' ya existe")
+        cfg = self.get()
+        cfg.publish.vps_list.append(vps)
+        self.save(cfg)
+
+    def remove_vps(self, vps_id: str) -> VpsCfg:
+        vps = self.get_vps(vps_id)
+        if not vps:
+            raise ConfigError(f"vps '{vps_id}' no existe")
+        cfg = self.get()
+        cfg.publish.vps_list = [v for v in cfg.publish.vps_list if v.id != vps_id]
+        self.save(cfg)
+        return vps

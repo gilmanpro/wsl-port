@@ -32,6 +32,10 @@ SENSITIVE_TOOLS: frozenset[str] = frozenset({
     "tunnel_remove",
     "tunnel_start",
     "tunnel_stop",
+    "vps_add",
+    "vps_remove",
+    "vps_connect",
+    "vps_disconnect",
 })
 
 
@@ -64,6 +68,12 @@ def get_tool_defs() -> list[dict]:
         {"name": "tunnel_remove", "description": "Elimina un tunnel", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
         {"name": "tunnel_start", "description": "Inicia un tunnel SSH", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
         {"name": "tunnel_stop", "description": "Detiene un tunnel SSH", "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
+        # --- vps / publish ---
+        {"name": "list_vps", "description": "Lista VPS configurados para publicar", "inputSchema": {"type": "object", "properties": {}}},
+        {"name": "vps_add", "description": "Agrega un VPS para publicar servicios", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "host": {"type": "string"}, "user": {"type": "string"}, "port": {"type": "integer"}, "identity_file": {"type": "string"}}, "required": ["id", "host"]}},
+        {"name": "vps_remove", "description": "Elimina un VPS configurado", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]}},
+        {"name": "vps_connect", "description": "Abre un tunnel SSH al VPS", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "name": {"type": "string"}, "remote_port": {"type": "integer"}, "local_port": {"type": "integer"}}, "required": ["id"]}},
+        {"name": "vps_disconnect", "description": "Cierra todos los tunnels de un VPS", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]}},
     ]
 
 
@@ -211,3 +221,60 @@ class McpTools:
 
     def tool_tunnel_stop(self, name: str) -> dict:
         return self.ctx.forwarding.stop_tunnel(name)
+
+    # --- vps / publish tools ------------------------------------------------
+
+    def tool_list_vps(self) -> dict:
+        vps_list = self.ctx.store.get().publish.vps_list
+        return {"vps": [v.model_dump() for v in vps_list]}
+
+    def tool_vps_add(self, id: str, host: str, user: str = "root", port: int = 22, identity_file: str = "") -> dict:
+        from src.core.config import VpsCfg
+        vps = VpsCfg(id=id, host=host, user=user, port=port, identity_file=identity_file)
+        try:
+            self.ctx.store.add_vps(vps)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        return {"ok": True, "id": vps.id}
+
+    def tool_vps_remove(self, id: str) -> dict:
+        try:
+            self.ctx.store.remove_vps(id)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        return {"ok": True, "id": id}
+
+    def tool_vps_connect(self, id: str, name: str | None = None, remote_port: int = 80, local_port: int = 8080) -> dict:
+        vps = self.ctx.store.get_vps(id)
+        if not vps:
+            return {"ok": False, "error": f"vps '{id}' no existe"}
+        from src.core.config import TunnelCfg
+        tun_name = name or f"pub-{id}"
+        tun = TunnelCfg(
+            name=tun_name,
+            remote_host=vps.host,
+            remote_port=remote_port,
+            local_port=local_port,
+            ssh_user=vps.user,
+            ssh_host=vps.host,
+            auto_reconnect=True,
+            enabled=True,
+        )
+        r = self.ctx.forwarding.add_tunnel(tun)
+        if not r.get("ok"):
+            return r
+        r2 = self.ctx.forwarding.start_tunnel(tun_name)
+        return {"ok": r2.get("ok", False), "tunnel": tun_name, "vps": id, "error": r2.get("error")}
+
+    def tool_vps_disconnect(self, id: str) -> dict:
+        vps = self.ctx.store.get_vps(id)
+        if not vps:
+            return {"ok": False, "error": f"vps '{id}' no existe"}
+        cfg = self.ctx.store.get()
+        closed = 0
+        for t in cfg.forwarding.tunnels:
+            if (t.ssh_host == vps.host or t.remote_host == vps.host) and t.enabled:
+                r = self.ctx.forwarding.stop_tunnel(t.name)
+                if r.get("ok"):
+                    closed += 1
+        return {"ok": True, "closed": closed, "vps": id}

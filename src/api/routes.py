@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from src.api.auth import AuthService
 from src.cli.common import CliContext
-from src.core.config import ForwardItem, GlobalLimits, PerDistroLimits, ScheduleTask, TunnelCfg, snapshot_dir
+from src.core.config import ForwardItem, GlobalLimits, PerDistroLimits, ScheduleTask, TunnelCfg, VpsCfg, snapshot_dir
 from src.core.profiles import ProfileService
 from src.core.scheduler import Scheduler
 from src.core.watcher import Watcher
@@ -372,3 +372,91 @@ def tunnels_stop(name: str, ctx: CliContext = Ctx):
     if not r.get("ok"):
         raise HTTPException(status_code=400, detail=r.get("error", "error"))
     return r
+
+
+# -------------------------------------------------------------- vps / publish ---
+
+class VpsAddBody(BaseModel):
+    id: str
+    host: str
+    user: str = "root"
+    port: int = 22
+    identity_file: str = ""
+
+
+@router.get("/vps", dependencies=[require("read")])
+def vps_list(ctx: CliContext = Ctx):
+    vps_list = ctx.store.get().publish.vps_list
+    return {"vps": [v.model_dump() for v in vps_list]}
+
+
+@router.post("/vps", dependencies=[require("write")])
+def vps_add(body: VpsAddBody = Body(...), ctx: CliContext = Ctx):
+    vps = VpsCfg(
+        id=body.id,
+        host=body.host,
+        user=body.user,
+        port=body.port,
+        identity_file=body.identity_file,
+    )
+    try:
+        ctx.store.add_vps(vps)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "id": vps.id}
+
+
+@router.delete("/vps/{vps_id}", dependencies=[require("write")])
+def vps_remove(vps_id: str, ctx: CliContext = Ctx):
+    try:
+        ctx.store.remove_vps(vps_id)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"ok": True, "id": vps_id}
+
+
+@router.post("/vps/{vps_id}/connect", dependencies=[require("write")])
+def vps_connect(vps_id: str, body: dict = Body(default={}), ctx: CliContext = Ctx):
+    """Abre un tunnel SSH al VPS indicado."""
+    vps = ctx.store.get_vps(vps_id)
+    if not vps:
+        raise HTTPException(status_code=404, detail=f"vps '{vps_id}' no existe")
+
+    name = body.get("name", f"pub-{vps_id}")
+    remote_port = int(body.get("remote_port", 80))
+    local_port = int(body.get("local_port", 8080))
+
+    tun = TunnelCfg(
+        name=name,
+        remote_host=vps.host,
+        remote_port=remote_port,
+        local_port=local_port,
+        ssh_user=vps.user,
+        ssh_host=vps.host,
+        auto_reconnect=True,
+        enabled=True,
+    )
+    r = ctx.forwarding.add_tunnel(tun)
+    if not r.get("ok"):
+        raise HTTPException(status_code=400, detail=r.get("error", "error"))
+    r2 = ctx.forwarding.start_tunnel(name)
+    if not r2.get("ok"):
+        raise HTTPException(status_code=400, detail=r2.get("error", "error"))
+    return {"ok": True, "tunnel": name, "vps": vps_id}
+
+
+@router.post("/vps/{vps_id}/disconnect", dependencies=[require("write")])
+def vps_disconnect(vps_id: str, ctx: CliContext = Ctx):
+    """Cierra todos los tunnels hacia un VPS."""
+    vps = ctx.store.get_vps(vps_id)
+    if not vps:
+        raise HTTPException(status_code=404, detail=f"vps '{vps_id}' no existe")
+
+    cfg = ctx.store.get()
+    closed = 0
+    for t in cfg.forwarding.tunnels:
+        if (t.ssh_host == vps.host or t.remote_host == vps.host) and t.enabled:
+            r = ctx.forwarding.stop_tunnel(t.name)
+            if r.get("ok"):
+                closed += 1
+    return {"ok": True, "closed": closed, "vps": vps_id}

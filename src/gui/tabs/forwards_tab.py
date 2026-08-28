@@ -1,12 +1,14 @@
-"""Pestana Forwards: lista de port-forwards Windows -> WSL con CRUD."""
+"""Pestana Forwards: port-forwards Windows -> WSL con CRUD — ttkbootstrap moderno."""
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox
+
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
 
 from src.core.config import ForwardItem
 from src.core.logger import get_logger
-from src.gui.widgets import make_tree
 
 log = get_logger("gui.forwards")
 
@@ -21,64 +23,163 @@ class ForwardsTab(ttk.Frame):
         self._build()
         self.refresh()
 
+    # ── Construccion de la interfaz ──────────────────────────────────────
     def _build(self) -> None:
-        # --- toolbar ---
-        bar = ttk.Frame(self)
-        bar.pack(fill="x", padx=6, pady=6)
-        ttk.Button(bar, text="🔄 Refrescar", command=self.refresh).pack(side="left", padx=2)
-        ttk.Button(bar, text="➕ Agregar...", command=self._add_dialog).pack(side="left", padx=2)
-        ttk.Button(bar, text="🗑 Eliminar", command=self._remove).pack(side="left", padx=2)
-        ttk.Button(bar, text="▶ Iniciar", command=self._start).pack(side="left", padx=2)
-        ttk.Button(bar, text="⏹ Detener", command=self._stop).pack(side="left", padx=2)
-        ttk.Button(bar, text="Aplicar todos", command=self._apply_all).pack(side="left", padx=2)
-        ttk.Button(bar, text="Limpiar todo", command=self._clear_all).pack(side="left", padx=2)
+        # ── Header ──
+        header = ttk.Frame(self)
+        header.pack(fill="x", padx=12, pady=(10, 4))
 
-        # --- tree ---
-        self.tree = make_tree(
-            self,
-            [
-                ("name", "Nombre", 160),
-                ("local_port", "Puerto Local", 100),
-                ("wsl_ip", "WSL IP", 140),
-                ("wsl_port", "WSL Port", 100),
-                ("enabled", "Habilitado", 80),
-                ("active", "Estado", 100),
-            ],
+        ttk.Label(
+            header,
+            text="Port Forwards",
+            font=("Segoe UI", 16, "bold"),
+        ).pack(side="left")
+
+        ttk.Button(
+            header,
+            text="+ Add Forward",
+            bootstyle=SUCCESS,
+            command=self._add_dialog,
+            width=16,
+        ).pack(side="right", padx=4)
+
+        ttk.Button(
+            header,
+            text="Apply All",
+            bootstyle="info-outline",
+            command=self._apply_all,
+            width=12,
+        ).pack(side="right", padx=4)
+
+        ttk.Button(
+            header,
+            text="Clear All",
+            bootstyle=(DANGER, OUTLINE),
+            command=self._clear_all,
+            width=12,
+        ).pack(side="right", padx=4)
+
+        ttk.Separator(self, bootstyle="secondary").pack(fill="x", padx=12, pady=4)
+
+        # ── Treeview ──
+        tree_frame = ttk.Frame(self)
+        tree_frame.pack(fill="both", expand=True, padx=12, pady=4)
+
+        columns = [
+            ("name", "Nombre", 160),
+            ("local_port", "Puerto Local", 110),
+            ("wsl_port", "Puerto WSL", 110),
+            ("wsl_ip", "IP WSL", 140),
+            ("enabled", "Habilitado", 100),
+            ("active", "Estado", 120),
+        ]
+
+        self.tree = ttk.Treeview(
+            tree_frame,
+            columns=[c[0] for c in columns],
+            show="headings",
+            height=12,
+            bootstyle="primary",
         )
+        for cid, title, width in columns:
+            self.tree.heading(cid, text=title, anchor="w")
+            self.tree.column(cid, width=width, anchor="w", minwidth=80)
 
-        # --- status ---
-        self.status_var = tk.StringVar(value="cargando...")
-        ttk.Label(self, textvariable=self.status_var, foreground="#888").pack(
-            anchor="w", padx=8, pady=(0, 4)
+        vsb = ttk.Scrollbar(
+            tree_frame, orient="vertical", command=self.tree.yview, bootstyle="round"
         )
+        self.tree.configure(yscrollcommand=vsb.set)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        tree_frame.rowconfigure(0, weight=1)
+        tree_frame.columnconfigure(0, weight=1)
 
-    # -- datos --------------------------------------------------------------
+        # ── Action buttons ──
+        ttk.Separator(self, bootstyle="secondary").pack(fill="x", padx=12, pady=4)
 
+        action_frame = ttk.Frame(self)
+        action_frame.pack(fill="x", padx=12, pady=(0, 8))
+
+        ttk.Button(
+            action_frame,
+            text="Start",
+            bootstyle=SUCCESS,
+            command=self._start,
+            width=10,
+        ).pack(side="left", padx=4)
+
+        ttk.Button(
+            action_frame,
+            text="Stop",
+            bootstyle=DANGER,
+            command=self._stop,
+            width=10,
+        ).pack(side="left", padx=4)
+
+        ttk.Button(
+            action_frame,
+            text="Remove",
+            bootstyle=WARNING,
+            command=self._remove,
+            width=10,
+        ).pack(side="left", padx=4)
+
+        ttk.Button(
+            action_frame,
+            text="Refresh",
+            bootstyle=INFO,
+            command=self.refresh,
+            width=10,
+        ).pack(side="left", padx=4)
+
+        # ── Status bar ──
+        self.status_var = tk.StringVar(value="Cargando...")
+        status_bar = ttk.Frame(self)
+        status_bar.pack(fill="x", padx=12, pady=(0, 6))
+
+        self.status_dot = ttk.Label(
+            status_bar, text="\u25cf", font=("Segoe UI", 10), foreground="#888"
+        )
+        self.status_dot.pack(side="left", padx=(0, 4))
+
+        ttk.Label(
+            status_bar, textvariable=self.status_var, foreground="#888"
+        ).pack(side="left")
+
+    # ── Datos ────────────────────────────────────────────────────────────
     def refresh(self) -> None:
         try:
             forwards = self.ctx.forwarding.list_forwards()
             self.tree.delete(*self.tree.get_children())
             for f in forwards:
-                status = "● ACTIVO" if f.get("active") else "○ inactivo"
+                is_active = f.get("active", False)
+                status = "ACTIVO" if is_active else "Inactivo"
                 self.tree.insert(
                     "",
                     "end",
                     values=(
                         f.get("name", ""),
                         f.get("local_port", ""),
-                        f.get("wsl_ip", ""),
                         f.get("wsl_port", ""),
+                        f.get("wsl_ip", ""),
                         "Si" if f.get("enabled") else "No",
                         status,
                     ),
                 )
             active = sum(1 for f in forwards if f.get("active"))
-            self.status_var.set(
-                f"{active}/{len(forwards)} forwards activos"
-            )
+            total = len(forwards)
+            self.status_var.set(f"{active}/{total} forwards activos")
+
+            # Update status dot color
+            if active > 0:
+                self.status_dot.configure(foreground="#28a745")
+            else:
+                self.status_dot.configure(foreground="#888")
+
         except Exception as e:  # noqa: BLE001
             log.exception("refresh forwards fallo")
             self.status_var.set(f"error: {e}")
+            self.status_dot.configure(foreground="#dc3545")
         finally:
             if self.winfo_exists():
                 self._job = self.after(5000, self.refresh)
@@ -90,45 +191,79 @@ class ForwardsTab(ttk.Frame):
             return None
         return self.tree.item(sel[0], "values")[0]
 
-    # -- acciones -----------------------------------------------------------
-
+    # ── Dialogo agregar ──────────────────────────────────────────────────
     def _add_dialog(self) -> None:
-        """Dialogo para agregar un forward."""
-        dlg = tk.Toplevel(self)
+        dlg = ttk.Toplevel(self)
         dlg.title("Agregar Forward")
-        dlg.geometry("380x320")
+        dlg.geometry("420x380")
         dlg.transient(self.winfo_toplevel())
         dlg.grab_set()
 
-        fields = {}
-        for i, (label, key, default) in enumerate([
-            ("Nombre:", "name", ""),
-            ("Puerto Local:", "local_port", "8080"),
-            ("WSL IP:", "wsl_ip", "127.0.0.1"),
-            ("WSL Port:", "wsl_port", "80"),
-        ]):
-            ttk.Label(dlg, text=label).grid(row=i, column=0, sticky="w", padx=8, pady=4)
-            var = tk.StringVar(value=default)
-            entry = ttk.Entry(dlg, textvariable=var, width=28)
-            entry.grid(row=i, column=1, padx=8, pady=4)
-            fields[key] = var
+        # Title
+        ttk.Label(
+            dlg, text="Nuevo Port Forward", font=("Segoe UI", 13, "bold")
+        ).pack(pady=(12, 8))
 
-        enabled_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(dlg, text="Habilitado", variable=enabled_var).grid(
-            row=4, column=0, columnspan=2, sticky="w", padx=8, pady=4
+        ttk.Separator(dlg, bootstyle="secondary").pack(fill="x", padx=16, pady=4)
+
+        form = ttk.Frame(dlg, padding=8)
+        form.pack(fill="x", padx=16)
+
+        # Nombre
+        row = ttk.Frame(form)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Nombre:", width=14, anchor="w").pack(side="left")
+        name_var = tk.StringVar()
+        ttk.Entry(row, textvariable=name_var, width=28, bootstyle="default").pack(
+            side="left", padx=(4, 0)
         )
+
+        # Puerto Local
+        row = ttk.Frame(form)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Puerto Local:", width=14, anchor="w").pack(side="left")
+        local_var = tk.StringVar(value="8080")
+        ttk.Entry(row, textvariable=local_var, width=28, bootstyle="default").pack(
+            side="left", padx=(4, 0)
+        )
+
+        # Puerto WSL
+        row = ttk.Frame(form)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="Puerto WSL:", width=14, anchor="w").pack(side="left")
+        wsl_port_var = tk.StringVar(value="80")
+        ttk.Entry(row, textvariable=wsl_port_var, width=28, bootstyle="default").pack(
+            side="left", padx=(4, 0)
+        )
+
+        # IP WSL
+        row = ttk.Frame(form)
+        row.pack(fill="x", pady=4)
+        ttk.Label(row, text="IP WSL:", width=14, anchor="w").pack(side="left")
+        wsl_ip_var = tk.StringVar(value="127.0.0.1")
+        ttk.Entry(row, textvariable=wsl_ip_var, width=28, bootstyle="default").pack(
+            side="left", padx=(4, 0)
+        )
+
+        # Enabled
+        enabled_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            form, text="Habilitado", variable=enabled_var, bootstyle="success"
+        ).pack(anchor="w", pady=4)
+
+        ttk.Separator(dlg, bootstyle="secondary").pack(fill="x", padx=16, pady=4)
 
         def _ok() -> None:
             try:
-                name = fields["name"].get().strip()
+                name = name_var.get().strip()
                 if not name:
                     messagebox.showwarning("WSL Manager", "El nombre es obligatorio")
                     return
                 fwd = ForwardItem(
                     name=name,
-                    local_port=int(fields["local_port"].get()),
-                    wsl_port=int(fields["wsl_port"].get()),
-                    wsl_ip=fields["wsl_ip"].get().strip() or "127.0.0.1",
+                    local_port=int(local_var.get()),
+                    wsl_port=int(wsl_port_var.get()),
+                    wsl_ip=wsl_ip_var.get().strip() or "127.0.0.1",
                     enabled=enabled_var.get(),
                 )
                 r = self.ctx.forwarding.add_forward(fwd)
@@ -141,15 +276,20 @@ class ForwardsTab(ttk.Frame):
                 messagebox.showerror("WSL Manager", str(e))
 
         btn_frame = ttk.Frame(dlg)
-        btn_frame.grid(row=5, column=0, columnspan=2, pady=12)
-        ttk.Button(btn_frame, text="Agregar", command=_ok).pack(side="left", padx=4)
-        ttk.Button(btn_frame, text="Cancelar", command=dlg.destroy).pack(side="left", padx=4)
+        btn_frame.pack(pady=12)
+        ttk.Button(
+            btn_frame, text="Agregar", command=_ok, bootstyle=SUCCESS, width=14
+        ).pack(side="left", padx=6)
+        ttk.Button(
+            btn_frame, text="Cancelar", command=dlg.destroy, bootstyle=DANGER, width=14
+        ).pack(side="left", padx=6)
 
+    # ── Acciones ─────────────────────────────────────────────────────────
     def _remove(self) -> None:
         name = self._selected()
         if not name:
             return
-        if not messagebox.askyesno("WSL Manager", f"¿Eliminar forward '{name}'?"):
+        if not messagebox.askyesno("WSL Manager", f"Eliminar forward '{name}'?"):
             return
         r = self.ctx.forwarding.remove_forward(name)
         if not r.get("ok"):
@@ -182,7 +322,7 @@ class ForwardsTab(ttk.Frame):
 
     def _clear_all(self) -> None:
         if not messagebox.askyesno(
-            "WSL Manager", "¿Limpiar TODOS los portproxies? Esto es destructivo."
+            "WSL Manager", "Limpiar TODOS los portproxies? Esto es destructivo."
         ):
             return
         r = self.ctx.forwarding.clear_all_forwards()
