@@ -408,6 +408,27 @@ def cmd_tunnels_latency(args) -> int:
     return 0 if r.get("ok") else 1
 
 
+def cmd_tunnels_update(args) -> int:
+    from . import core
+    kwargs = {}
+    if args.vps is not None:
+        kwargs["vps_id"] = args.vps
+    if args.local is not None:
+        kwargs["local"] = args.local
+    if args.remote is not None:
+        kwargs["remote"] = args.remote
+    if args.auto_start is not None:
+        kwargs["auto_start"] = args.auto_start
+    if args.enabled is not None:
+        kwargs["enabled"] = args.enabled
+    if not kwargs:
+        print("error:没有任何参数更新", file=sys.stderr)
+        return 1
+    r = core.update_tunnel(args.id, **kwargs)
+    print(r.get("message", r.get("error", "ok")))
+    return 0 if r.get("ok") else 1
+
+
 # -- VPS --------------------------------------------------------------------
 
 def cmd_vps_list(args) -> int:
@@ -855,6 +876,14 @@ def build_parser() -> argparse.ArgumentParser:
     tnlat = tn_sub.add_parser("latency", help="Latencia del tunnel")
     tnlat.add_argument("id")
     tnlat.set_defaults(fn=cmd_tunnels_latency)
+    tnu = tn_sub.add_parser("update", help="Actualizar tunnel")
+    tnu.add_argument("id")
+    tnu.add_argument("--vps")
+    tnu.add_argument("--local")
+    tnu.add_argument("--remote")
+    tnu.add_argument("--auto-start", type=bool)
+    tnu.add_argument("--enabled", type=bool)
+    tnu.set_defaults(fn=cmd_tunnels_update)
 
     # vps
     vp = sub.add_parser("vps", help="Gestion de VPS")

@@ -739,6 +739,35 @@ def tunnel_latency(tun_id: str) -> dict:
         return {"ok": False, "error": str(e)}
 
 
+def update_tunnel(tun_id: str, **kwargs) -> dict:
+    try:
+        from wsl_port.vendor.port_forwarder.core.config import Bind
+        store = pf_store()
+        tun = store.get_tunnel(tun_id)
+        if not tun:
+            return {"ok": False, "error": f"Tunnel '{tun_id}' no existe"}
+        if "local" in kwargs:
+            local = kwargs.pop("local")
+            host, port = local.rsplit(":", 1)
+            kwargs["local_bind"] = Bind(host=host, port=int(port))
+        if "remote" in kwargs:
+            remotes = kwargs.pop("remote")
+            if isinstance(remotes, str):
+                remotes = [r.strip() for r in remotes.split(",") if r.strip()]
+            kwargs["remote_binds"] = []
+            for r in remotes:
+                rh, rp = r.rsplit(":", 1)
+                kwargs["remote_binds"].append(Bind(host=rh, port=int(rp)))
+        if "vps_id" in kwargs:
+            vps = store.get_vps(kwargs["vps_id"])
+            if not vps:
+                return {"ok": False, "error": f"VPS '{kwargs['vps_id']}' no existe"}
+        store.update_tunnel(tun_id, **kwargs)
+        return {"ok": True, "message": f"Tunnel '{tun_id}' actualizado"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 # ---------------------------------------------------------------------------
 # VPS (T3)
 # ---------------------------------------------------------------------------

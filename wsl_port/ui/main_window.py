@@ -341,8 +341,10 @@ class MainWindow:
         for text, style, cmd in [
             ("Refrescar", "success", self._refresh_full),
             ("Nuevo Tunnel...", "info", self._add_tunnel_dialog),
+            ("Editar...", "secondary outline", self._edit_selected_tunnel),
             ("Iniciar", "success outline", self._start_selected_tunnel),
             ("Detener", "warning outline", self._stop_selected_tunnel),
+            ("Reiniciar", "info outline", self._restart_selected_tunnel),
             ("Eliminar", "danger outline", self._remove_selected_tunnel),
         ]:
             ttk.Button(tun_bar, text=text, bootstyle=style, command=cmd).pack(side="left", padx=2)
@@ -1060,6 +1062,73 @@ class MainWindow:
             self._notify("Tunnel", f"{tid} detenido" if r.get("ok") else f"Error: {r.get('error')}")
             self._q.put({"_action": "refresh"})
         threading.Thread(target=_work, daemon=True).start()
+
+    def _restart_selected_tunnel(self) -> None:
+        tid = self._get_selected_tunnel()
+        if not tid:
+            return
+        self._notify("Tunnel", f"Reiniciando {tid}...")
+        def _work():
+            r = core.restart_tunnel(tid)
+            self._notify("Tunnel", f"{tid} reiniciado" if r.get("ok") else f"Error: {r.get('error')}")
+            self._q.put({"_action": "refresh"})
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _edit_selected_tunnel(self) -> None:
+        tid = self._get_selected_tunnel()
+        if not tid:
+            return
+        vps_list = core.vps_list()
+        if not vps_list:
+            from tkinter import messagebox
+            messagebox.showwarning("Tunnels", "Primero crea un VPS en la seccion Servidores VPS")
+            return
+        store = core.pf_store()
+        tun = store.get_tunnel(tid)
+        if not tun:
+            from tkinter import messagebox
+            messagebox.showerror("Tunnel", f"Tunnel '{tid}' no encontrado")
+            return
+        def _validate(data):
+            if not data.get("vps_id", "").strip():
+                raise ValueError("El VPS es obligatorio")
+        fields = [
+            ("vps_id", "VPS destino", "combo"),
+            ("local_host", "Host local", "entry"),
+            ("local_port", "Puerto local", "int"),
+            ("remote_host", "Host remoto", "entry"),
+            ("remote_port", "Puerto remoto", "int"),
+            ("auto_start", "Auto-iniciar", "bool"),
+        ]
+        dlg = _FormDialog(self.root, f"Editar Tunnel '{tid}'", fields, validate=_validate)
+        dlg._vars["vps_id"].set(tun.vps_id)
+        dlg._vars["local_host"].set(tun.local_bind.host)
+        dlg._vars["local_port"].set(tun.local_bind.port)
+        dlg._vars["remote_host"].set(tun.remote_binds[0].host if tun.remote_binds else "0.0.0.0")
+        dlg._vars["remote_port"].set(tun.remote_binds[0].port if tun.remote_binds else 0)
+        dlg._vars["auto_start"].set(tun.auto_start)
+        vps_ids = [v["id"] for v in vps_list]
+        dlg.set_combo_values("vps_id", vps_ids)
+        self.root.wait_window(dlg)
+        if not dlg.result:
+            return
+        data = dlg.result
+        self._notify("Tunnel", f"Actualizando tunnel '{tid}'...")
+        r = core.update_tunnel(
+            tid,
+            vps_id=data["vps_id"].strip(),
+            local=f"{data.get('local_host', '127.0.0.1').strip() or '127.0.0.1'}:{data['local_port']}",
+            remote=f"{data.get('remote_host', '0.0.0.0').strip() or '0.0.0.0'}:{data['remote_port']}",
+            auto_start=bool(data.get("auto_start", True)),
+        )
+        from tkinter import messagebox
+        if r.get("ok"):
+            self._notify("Tunnel", f"Tunnel '{tid}' actualizado")
+            messagebox.showinfo("Tunnel", f"Tunnel '{tid}' actualizado")
+            self._refresh()
+        else:
+            self._notify("Tunnel", f"Error: {r.get('error')}")
+            messagebox.showerror("Tunnel", f"Error: {r.get('error')}")
 
     def _remove_selected_tunnel(self) -> None:
         tid = self._get_selected_tunnel()
