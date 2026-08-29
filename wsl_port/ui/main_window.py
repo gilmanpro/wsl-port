@@ -804,14 +804,14 @@ class MainWindow:
         import subprocess
         try:
             subprocess.Popen(
-                ["wt.exe", "wsl", "-d", name],
+                ["wt.exe", "wsl", "-d", name, "--cd", "/"],
                 creationflags=0x08000000,
             )
             self._notify("Terminal", f"Terminal abierta en {name}")
         except FileNotFoundError:
             try:
                 subprocess.Popen(
-                    ["cmd.exe", "/c", "start", "cmd.exe", "/k", f"wsl -d {name}"],
+                    ["cmd.exe", "/c", "start", "cmd.exe", "/k", f"wsl -d {name} --cd /"],
                     creationflags=0x08000000,
                 )
                 self._notify("Terminal", f"Terminal abierta en {name}")
@@ -863,13 +863,14 @@ class MainWindow:
         from tkinter import messagebox
         m = core.distro_metrics(name)
         if m is None:
-            messagebox.showinfo("Metricas", f"La distro '{name}' no esta corriendo")
+            messagebox.showinfo("Metricas", f"La distro '{name}' no esta corriendo o no responde")
             return
+        ram = f"{m.get('ram_used_mb', 'N/A')}/{m.get('ram_total_mb', 'N/A')} MB ({m.get('ram_percent', 'N/A')}%)" if m.get('ram_total_mb') else 'N/A'
         msg = (f"Distro: {m['name']}\n"
-               f"IP: {m.get('ip', '-')}\n"
-               f"RAM: {m.get('ram_used_mb',0)}/{m.get('ram_total_mb',0)} MB ({m.get('ram_percent',0)}%)\n"
-               f"CPUs: {m.get('cpus', '?')}\n"
-               f"Uptime: {m.get('uptime_s',0)}s")
+               f"IP: {m.get('ip') or 'N/A'}\n"
+               f"RAM: {ram}\n"
+               f"CPUs: {m.get('cpus') or 'N/A'}\n"
+               f"Uptime: {m.get('uptime_s', 0)}s")
         messagebox.showinfo("Metricas", msg)
 
     def _create_distro_dialog(self) -> None:

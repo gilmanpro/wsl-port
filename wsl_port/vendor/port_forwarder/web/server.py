@@ -153,18 +153,21 @@ class PanelHandler(BaseHTTPRequestHandler):
         html_text = body.decode("utf-8", errors="ignore")
         if ctype.startswith("text/html") and "<script" in html_text:
             body = self._html_augment(html_text, nonce).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", f"{ctype}; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        # Defensa H2/M1: headers de seguridad en todas las respuestas.
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("X-Frame-Options", "DENY")
-        self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Content-Security-Policy", self._csp(nonce))
-        self.end_headers()
-        if body:
-            self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", f"{ctype}; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            # Defensa H2/M1: headers de seguridad en todas las respuestas.
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Content-Security-Policy", self._csp(nonce))
+            self.end_headers()
+            if body:
+                self.wfile.write(body)
+        except (ConnectionResetError, BrokenPipeError, OSError):
+            pass
 
     # -- CSRF (H1): las mutaciones exigen Origin/Referer del mismo host. ----
 
@@ -297,14 +300,21 @@ class PanelHandler(BaseHTTPRequestHandler):
         if not key:
             log.warning("WS sin Sec-WebSocket-Key")
             return None
-        # Validar token via cookie o Authorization header (H7: no query token)
+        # Validar token via cookie, Authorization header, o query string (para WS del navegador)
         cookie = self.headers.get("Cookie", "")
         token_ck = ""
         for part in cookie.split(";"):
             if "pf_token=" in part:
                 token_ck = part.split("pf_token=", 1)[1].strip()
                 break
-        provided = token_ck or self.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        # Query string token (navegador no puede enviar headers custom en WebSocket)
+        parsed_qs = urlparse(self.path)
+        qs_token = ""
+        for kv in (parsed_qs.query or "").split("&"):
+            if kv.startswith("token="):
+                qs_token = kv.split("=", 1)[1]
+                break
+        provided = token_ck or qs_token or self.headers.get("Authorization", "").removeprefix("Bearer ").strip()
         if self.panel.token and provided != self.panel.token:
             # No autorizado para WS
             self.send_response(401)
@@ -372,6 +382,14 @@ class PanelHandler(BaseHTTPRequestHandler):
                 pass
 
     def do_GET(self) -> None:
+        try:
+            self._do_GET_inner()
+        except (ConnectionResetError, BrokenPipeError, OSError):
+            pass
+        except Exception:
+            log.exception("GET %s fallo", getattr(self, 'path', '?'))
+
+    def _do_GET_inner(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path
         # WebSocket upgrade
@@ -476,6 +494,14 @@ class PanelHandler(BaseHTTPRequestHandler):
             self._send(body, 500)
 
     def do_POST(self) -> None:
+        try:
+            self._do_POST_inner()
+        except (ConnectionResetError, BrokenPipeError, OSError):
+            pass
+        except Exception:
+            log.exception("POST %s fallo", getattr(self, 'path', '?'))
+
+    def _do_POST_inner(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path
         if not path.startswith("/api/"):
@@ -830,19 +856,22 @@ class WebPanel:
     @staticmethod
     def _ws_send(sock, data: bytes) -> None:
         import struct
-        frame = bytearray()
-        frame.append(0x81)
-        length = len(data)
-        if length < 126:
-            frame.append(length)
-        elif length < 65536:
-            frame.append(126)
-            frame.extend(struct.pack("!H", length))
-        else:
-            frame.append(127)
-            frame.extend(struct.pack("!Q", length))
-        frame.extend(data)
-        sock.sendall(frame)
+        try:
+            frame = bytearray()
+            frame.append(0x81)
+            length = len(data)
+            if length < 126:
+                frame.append(length)
+            elif length < 65536:
+                frame.append(126)
+                frame.extend(struct.pack("!H", length))
+            else:
+                frame.append(127)
+                frame.extend(struct.pack("!Q", length))
+            frame.extend(data)
+            sock.sendall(frame)
+        except (ConnectionResetError, BrokenPipeError, OSError):
+            pass
 
     def status(self) -> dict[str, Any]:
         return {
@@ -1172,6 +1201,31 @@ class WebPanel:
                 return {"ok": True, "message": f"vps '{vps_id}' editado"}
         # Distros WSL: start/stop/restart/delete/export/import
         if parts[:3] == ["api", "v1", "distro"]:
+            if len(parts) == 4 and parts[3] == "available":
+                import subprocess
+                try:
+                    proc = subprocess.run(
+                        ['wsl.exe', '--list', '--online'],
+                        capture_output=True, timeout=30,
+                        creationflags=0x08000000
+                    )
+                    output = proc.stdout.decode('utf-16-le', errors='replace').strip()
+                    lines = []
+                    for l in output.splitlines():
+                        l = l.strip()
+                        if not l or l.startswith('NAME') or l.startswith('Instalar') or l.startswith('A continu') or l.startswith('-'):
+                            continue
+                        # Extract the distro name (first token before spaces)
+                        parts = l.split()
+                        if parts:
+                            name = parts[0]
+                            if '.' not in name and name not in ('NAME', 'FRIENDLY', 'LISTA'):
+                                lines.append(name)
+                    if not lines:
+                        lines = ['Ubuntu', 'Debian', 'kali-linux', 'openSUSE-42', 'Ubuntu-20.04', 'Ubuntu-22.04', 'Ubuntu-24.04']
+                    return {'ok': True, 'distros': lines}
+                except Exception as e:
+                    return {'ok': True, 'distros': ['Ubuntu', 'Debian', 'kali-linux', 'openSUSE-42', 'Ubuntu-20.04', 'Ubuntu-22.04', 'Ubuntu-24.04']}
             if len(parts) == 4 and parts[3] == "create":
                 name = str(body.get("name") or "").strip()
                 if not name:
@@ -1192,7 +1246,8 @@ class WebPanel:
             public_port = int(body.get("public_port") or 0)
             if not distro or not wsl_port or not vps_id or not public_port:
                 return {"ok": False, "error": "distro, wsl_port, vps_id y public_port son obligatorios"}
-            return self._do_publish(distro, wsl_port, vps_id, public_port)
+            tunnel_name = str(body.get("tunnel_name") or "").strip()
+            return self._do_publish(distro, wsl_port, vps_id, public_port, tunnel_name=tunnel_name)
         if parts[:3] == ["api", "v1", "unpublish"] and len(parts) == 4:
             return self._do_unpublish(parts[3])
         if parts[:3] == ["api", "v1", "mcp"]:
@@ -1379,7 +1434,7 @@ class WebPanel:
             }
         except Exception as e:
             return {"ok": False, "error": str(e)}
-    def _do_publish(self, distro: str, wsl_port: int, vps_id: str, public_port: int) -> dict[str, Any]:
+    def _do_publish(self, distro: str, wsl_port: int, vps_id: str, public_port: int, tunnel_name: str = '') -> dict[str, Any]:
         """Publica un servicio WSL en Internet via VPS (1 clic)."""
         try:
             from wsl_port.vendor.wsl_manager.utils.subprocess_async import run as wsl_run
@@ -1393,7 +1448,7 @@ class WebPanel:
             vps = store.get_vps(vps_id)
             if not vps:
                 return {"ok": False, "error": f"VPS '{vps_id}' no existe"}
-            tid = f"pub-{distro.lower().replace(' ', '-')}-{wsl_port}"
+            tid = tunnel_name.strip() if tunnel_name and tunnel_name.strip() else f"pub-{distro.lower().replace(' ', '-')}-{wsl_port}"
             existing = store.get_tunnel(tid)
             if not existing:
                 tun = Tunnel(
@@ -1570,11 +1625,11 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="form"><label>Puerto WSL:</label><input id="pub-wslport" value="9000" style="width:80px"></div>
     <div class="form"><label>VPS:</label><select id="pub-vps"></select></div>
     <div class="form"><label>Puerto publico:</label><input id="pub-port" value="18097" style="width:80px"></div>
+    <div class="form"><label>Nombre tunnel:</label><input id="pub-name" placeholder="auto" style="width:150px"></div>
     <div class="separator"></div>
     <div class="toolbar">
       <button class="success" data-cmd="doPublish">Publicar</button>
       <button class="danger" data-cmd="doUnpublish">Detener publicacion</button>
-      <button class="outline" data-cmd="openPublished">Abrir en navegador</button>
     </div>
     <div id="pub-result" class="muted text-sm" style="margin-top:10px;"></div>
   </div>
@@ -1601,10 +1656,21 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <div id="activity"></div>
   <div class="toolbar">
     <button class="success" data-cmd="refresh">Refrescar</button>
-    <button data-cmd="showAddForward">Nuevo Forward...</button>
+    <button data-cmd="toggleFwdForm">Nuevo Forward...</button>
     <button data-cmd="post:/api/v1/forwards/apply">Reaplicar todos</button>
     <button class="danger outline" data-cmd="deleteForwardSel">Eliminar</button>
     <button class="danger outline" data-cmd="clearAllForwards">Limpiar todos</button>
+  </div>
+  <div id="fwd-form-panel" class="card" style="display:none;">
+    <h2>Nuevo Forward</h2>
+    <div class="form" style="flex-direction:column;gap:8px;">
+      <div class="form"><label style="width:120px">ID:</label><input id="fwd-id" placeholder="mi-forward" style="width:200px"></div>
+      <div class="form"><label style="width:120px">Puerto listen:</label><input id="fwd-listen" type="number" value="8080" style="width:100px"></div>
+      <div class="form"><label style="width:120px">Distro:</label><select id="fwd-distro"></select></div>
+      <div class="form"><label style="width:120px">Puerto WSL:</label><input id="fwd-wslport" type="number" value="9000" style="width:100px"></div>
+      <div class="form"><label style="width:120px">Protocolo:</label><select id="fwd-proto"><option value="tcp">TCP</option><option value="udp">UDP</option></select></div>
+      <div class="form"><button class="success" data-cmd="submitFwdForm">Crear Forward</button><button class="outline" data-cmd="toggleFwdForm">Cancelar</button></div>
+    </div>
   </div>
   <div class="card"><table><thead><tr><th>ID</th><th>Listen</th><th>Distro</th><th>WSL Port</th><th>Proto</th><th>Estado</th></tr></thead><tbody id="fwd-body"></tbody></table></div>
 </div>
@@ -1692,8 +1758,39 @@ function bindCmdEvents(){
     el.setAttribute('data-cmd', spec);
   });
 }
-function clearAllForwards(){ if(confirm('Limpiar TODOS los forwards?')) post('/api/v1/forwards/clear'); }
+function clearAllForwards(){ if(confirm('Limpiar TODOS los forwards?')) post('/api/v1/forwards/clear', 'Limpiando forwards...'); }
 function esc(v){ const d=document.createElement('div'); d.textContent=(v===null||v===undefined)?'':String(v); return d.innerHTML; }
+function showDialog(title, fields, onOk){
+  const overlay = document.createElement('div');
+  overlay.className = 'dialog-overlay';
+  let html = '<div class="dialog"><h3>' + esc(title) + '</h3>';
+  for(const f of fields){
+    html += '<div class="row"><label>' + esc(f.label) + ':</label>';
+    if(f.type === 'select'){
+      html += '<select id="dlg-' + f.id + '">';
+      for(const o of (f.options||[])) html += '<option value="' + esc(o.value) + '">' + esc(o.text) + '</option>';
+      html += '</select>';
+    } else if(f.type === 'password'){
+      html += '<input id="dlg-' + f.id + '" type="password" value="' + esc(f.value||'') + '">';
+    } else if(f.type === 'number'){
+      html += '<input id="dlg-' + f.id + '" type="number" value="' + esc(f.value||'0') + '" min="1">';
+    } else {
+      html += '<input id="dlg-' + f.id + '" type="text" value="' + esc(f.value||'') + '" placeholder="' + esc(f.placeholder||'') + '">';
+    }
+    html += '</div>';
+  }
+  html += '<div class="btns"><button class="outline" id="dlg-cancel">Cancelar</button><button class="success" id="dlg-ok">Aceptar</button></div></div>';
+  overlay.innerHTML = html;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#dlg-cancel').onclick = ()=> overlay.remove();
+  overlay.querySelector('#dlg-ok').onclick = ()=>{
+    const vals = {};
+    for(const f of fields){ vals[f.id] = document.getElementById('dlg-'+f.id).value; }
+    overlay.remove();
+    onOk(vals);
+  };
+  overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
+}
 function logout(){ localStorage.removeItem('pf_token'); document.cookie='pf_token=; Path=/; Max-Age=0; SameSite=Strict'; window.location.href='/login'; }
 function badge(s){
   const cls=(s==='ok'||s==='running'||s==='up')?'badge-ok':(s==='paused'||s==='waiting'||s==='stopped')?'badge-warn':(s==='error'||s==='down')?'badge-err':'badge-info';
@@ -1720,8 +1817,8 @@ async function api(path, opts={}){
   if(r.status===429){ const d=await r.clone().json().catch(()=>({})); toast(d.error||'Demasiados intentos','err'); throw new Error(d.error||'Rate limited'); }
   return r.json();
 }
-async function post(path){ activity('Procesando...','info'); const d=await api(path,{method:'POST'}); const k=d.ok===false?'err':'ok'; activity(d.message||d.error||'Hecho',k); toast(d.message||d.error||'ok',k); refresh(); }
-async function postJson(path, body){ activity('Procesando...','info'); const d=await api(path,{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}); const k=d.ok===false?'err':'ok'; activity(d.message||d.error||'Hecho',k); toast(d.message||d.error||'ok',k); refresh(); }
+async function post(path, label){ const msg=label||'Procesando...'; activity(msg,'info'); const d=await api(path,{method:'POST'}); const k=d.ok===false?'err':'ok'; activity(d.message||d.error||'Hecho',k); toast(d.message||d.error||'ok',k); refresh(); return d; }
+async function postJson(path, body, label){ const msg=label||'Procesando...'; activity(msg,'info'); const d=await api(path,{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}); const k=d.ok===false?'err':'ok'; activity(d.message||d.error||'Hecho',k); toast(d.message||d.error||'ok',k); refresh(); return d; }
 function showTab(id){ document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active')); document.querySelector(`[data-cmd="showTab:${id}"]`).classList.add('active'); document.getElementById('tab-'+id).classList.add('active'); localStorage.setItem('wslport-tab', id); if(id==='ajustes') loadMcpSettings(); }
 (function(){ bindCmdEvents(); const t=localStorage.getItem('wslport-tab'); if(t) showTab(t); })();
 function makeSelectable(tbodyId){ document.getElementById(tbodyId).addEventListener('click', e=>{ const tr=e.target.closest('tr'); if(!tr||!tr.dataset.id) return; tr.parentElement.querySelectorAll('tr').forEach(r=>r.classList.remove('selected')); tr.classList.add('selected'); }); }
@@ -1729,6 +1826,7 @@ function makeSelectable(tbodyId){ document.getElementById(tbodyId).addEventListe
 function renderDistros(list){
   const b=document.getElementById('distro-body'); b.innerHTML='';
   const sel=document.getElementById('pub-distro'); if(sel){ const cur=sel.value; sel.innerHTML=''; list.forEach(d=>{const o=document.createElement('option');o.value=d.name;o.textContent=d.name;sel.appendChild(o);}); if(cur) sel.value=cur; else if(list[0]) sel.value=list[0].name; }
+  const fSel=document.getElementById('fwd-distro'); if(fSel){ const cur=fSel.value; fSel.innerHTML=''; list.forEach(d=>{const o=document.createElement('option');o.value=d.name;o.textContent=d.name;fSel.appendChild(o);}); if(cur) fSel.value=cur; }
   if(!list||!list.length){ b.innerHTML='<tr><td colspan=4 class="empty-state">sin distros (WSL no responde)</td></tr>'; return; }
   for(const d of list){
     const state=d.state==='Running'?'running':'stopped';
@@ -1737,23 +1835,55 @@ function renderDistros(list){
     b.appendChild(tr);
   }
 }
-function distroActionSel(op){ const id=document.querySelector('#distro-body tr.selected'); if(!id){ toast('Selecciona una distro','warn'); return; } const name=id.dataset.id; activity(op.charAt(0).toUpperCase()+op.slice(1)+' '+name+'...','info'); post('/api/v1/distro/'+encodeURIComponent(name)+'/'+op); }
+function distroActionSel(op){ const id=document.querySelector('#distro-body tr.selected'); if(!id){ toast('Selecciona una distro','warn'); return; } const name=id.dataset.id; const labels={start:'Iniciando '+name+'...',stop:'Deteniendo '+name+'...',restart:'Reiniciando '+name+'...',delete:'Eliminando '+name+'...'}; post('/api/v1/distro/'+encodeURIComponent(name)+'/'+op, labels[op]||op+' '+name+'...'); }
 function exportDistroSel(){ const sel=document.querySelector('#distro-body tr.selected'); if(!sel){ toast('Selecciona una distro','warn'); return; } exportDistro(sel.dataset.id); }
-function deleteDistroSel(){ const sel=document.querySelector('#distro-body tr.selected'); if(!sel){ toast('Selecciona una distro','warn'); return; } if(!confirm('Eliminar distro '+sel.dataset.id+' y TODOS sus datos?')) return; activity('Eliminando...','info'); api('/api/v1/distro/'+encodeURIComponent(sel.dataset.id)+'/delete',{method:'POST'}).then(d=>{activity(d.message||d.error, d.ok?'success':'error'); refresh();}); }
+function deleteDistroSel(){ const sel=document.querySelector('#distro-body tr.selected'); if(!sel){ toast('Selecciona una distro','warn'); return; } if(!confirm('Eliminar distro '+sel.dataset.id+' y TODOS sus datos?')) return; post('/api/v1/distro/'+encodeURIComponent(sel.dataset.id)+'/delete', 'Eliminando distro...'); }
 function showMetricsSel(){ const sel=document.querySelector('#distro-body tr.selected'); if(!sel){ toast('Selecciona una distro','warn'); return; } api('/api/v1/distro/'+encodeURIComponent(sel.dataset.id)+'/metrics').then(d=>{ if(d.ok){ const m=document.getElementById('distro-body'); const row=m.querySelector('tr.selected'); if(row) row.title=JSON.stringify(d,null,2); alert('RAM: '+d.ram_used_mb+'/'+d.ram_total_mb+' MB ('+d.ram_percent+'%)'); } else alert('Error: '+d.error); }); }
-function showCreateDistro(){ const name=prompt('Nombre de la distro a instalar (ej: Ubuntu, Debian):'); if(!name) return; activity('Instalando '+name+'...','info'); api('/api/v1/distro/create',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name})}).then(d=>{activity(d.message||d.error, d.ok?'success':'error'); refresh();}); }
+function showCreateDistro(){
+  activity('Cargando distros disponibles...','info');
+  api('/api/v1/distro/available',{method:'POST'}).then(d=>{
+    activity('','');
+    const distros = (d.ok && d.distros) ? d.distros : ['Ubuntu','Debian'];
+    showDialog('Crear nueva distro WSL', [
+      {id:'cd-name', label:'Distro a instalar', type:'select', options:distros.map(n=>({value:n,text:n}))},
+    ], function(vals){
+      const name = vals['cd-name'];
+      if(!name){ toast('Selecciona una distro','err'); return; }
+      activity('Instalando '+name+'... (puede tardar varios minutos)','info');
+      toast('Instalando '+name+'... no cierres esta pagina','info');
+      api('/api/v1/distro/create',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name})}).then(d=>{
+        activity(d.message||d.error, d.ok?'success':'error'); 
+        toast(d.message||d.error, d.ok?'ok':'err');
+        refresh();
+      });
+    });
+  });
+}
 async function exportDistro(name){
-  activity('Exportando '+name+'... (el navegador iniciara la descarga)','info');
+  activity('Exportando '+name+'... (la descarga comenzara pronto)','info');
   try{
     const r=await fetch('/api/v1/distro/'+encodeURIComponent(name)+'/export',{headers:{Authorization:'Bearer '+TOKEN}});
-    if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.error||'HTTP '+r.status); }
+    if(!r.ok){ 
+      let errMsg = 'HTTP ' + r.status;
+      try { const d = await r.json(); errMsg = d.error || errMsg; } catch(e){}
+      throw new Error(errMsg); 
+    }
+    const ct = r.headers.get('content-type') || '';
+    if(ct.includes('application/json')){
+      const d = await r.json();
+      if(!d.ok) throw new Error(d.error || 'Error desconocido');
+      throw new Error('Respuesta inesperada');
+    }
     const blob=await r.blob();
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
     a.href=url; a.download=name+'.tar';
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-    activity('Exportacion completada','success');
+    a.style.display='none';
+    document.body.appendChild(a); 
+    a.click(); 
+    setTimeout(()=>{ a.remove(); URL.revokeObjectURL(url); }, 1000);
+    activity('Exportacion completada - revisa descargas','success');
+    toast('Descarga de '+name+'.tar iniciada','ok');
   }catch(e){ activity('Error exportando: '+e.message,'error'); toast('Error: '+e.message,'err'); }
 }
 async function importDistro(){
@@ -1784,29 +1914,71 @@ async function importDistro(){
 }
 function doPublish(){
   const distro=document.getElementById('pub-distro').value, wslport=parseInt(document.getElementById('pub-wslport').value), vps=document.getElementById('pub-vps').value, pubport=parseInt(document.getElementById('pub-port').value);
+  const tunName = document.getElementById('pub-name').value.trim();
   if(!distro||!vps||!wslport||!pubport){ toast('Completa todos los campos','err'); return; }
-  activity('Publicando...','info');
-  postJson('/api/v1/publish',{distro, wsl_port:wslport, vps_id:vps, public_port:pubport}).then(d=>{
-    if(d.public_url){ document.getElementById('pub-result').innerHTML='Publicado: <span class="accent">'+d.public_url+'</span>'; activity('Publicado en '+d.public_url,'success'); }
+  const payload = {distro, wsl_port:wslport, vps_id:vps, public_port:pubport};
+  if(tunName) payload.tunnel_name = tunName;
+  postJson('/api/v1/publish', payload, 'Publicando...').then(d=>{
+    if(d && d.ok && d.public_url){
+      document.getElementById('pub-result').innerHTML='Publicado: <span class="accent">'+d.public_url+'</span><br><span class="muted text-sm">Tunnel: '+esc(d.tunnel_id)+'</span>';
+      activity('Publicado en '+d.public_url,'success');
+    } else if(d && d.error){
+      document.getElementById('pub-result').innerHTML='<span style="color:var(--err)">'+esc(d.error)+'</span>';
+      activity('Error: '+d.error,'error');
+    }
+  }).catch(e=>{
+    document.getElementById('pub-result').innerHTML='<span style="color:var(--err)">Error de conexion</span>';
+    activity('Error de conexion: '+e.message,'error');
   });
 }
 function doUnpublish(){
   const distro=document.getElementById('pub-distro').value, wslport=parseInt(document.getElementById('pub-wslport').value);
-  if(!distro||!wslport) return;
-  const tid='pub-'+distro.toLowerCase().replace(/[^a-z0-9]+/g,'-')+'-'+wslport;
-  activity('Deteniendo...','info');
+  const tunName = document.getElementById('pub-name').value.trim();
+  let tid;
+  if(tunName) tid = tunName;
+  else if(distro && wslport) tid = 'pub-'+distro.toLowerCase().replace(/[^a-z0-9]+/g,'-')+'-'+wslport;
+  else { toast('Ingresa distro y puerto o nombre del tunnel','warn'); return; }
+  activity('Deteniendo publicacion...','info');
   api('/api/v1/unpublish/'+encodeURIComponent(tid),{method:'POST'}).then(d=>{activity(d.message||'Eliminado','success'); refresh();});
 }
-function openPublished(){ const r=document.getElementById('pub-result').textContent; const m=r.match(/https?:\/\/\S+/); if(m) window.open(m[0],'_blank'); else toast('Nada publicado aun','warn'); }
-function tunnelActionSel(op){ const sel=document.querySelector('#tun-body tr.selected'); if(!sel){ toast('Selecciona un tunnel','warn'); return; } activity('Procesando...','info'); post('/api/v1/tunnels/'+encodeURIComponent(sel.dataset.id)+'/'+op); }
-function deleteTunnelSel(){ const sel=document.querySelector('#tun-body tr.selected'); if(!sel){ toast('Selecciona un tunnel','warn'); return; } if(!confirm('Eliminar '+sel.dataset.id+'?')) return; activity('Eliminando...','info'); post('/api/v1/tunnels/'+encodeURIComponent(sel.dataset.id)+'/remove'); }
-function showAddTunnel(){ const id=prompt('ID del tunnel:'); if(!id) return; const vps=prompt('VPS id:'); if(!vps) return; const local=prompt('Local (ej 127.0.0.1:9000):','127.0.0.1:9000'); if(!local) return; const remote=prompt('Remoto (ej 0.0.0.0:18097):','0.0.0.0:18097'); if(!remote) return; postJson('/api/v1/tunnels/add',{id, vps_id:vps, local, remotes:[remote]}); }
-function showEditTunnel(){ const sel=document.querySelector('#tun-body tr.selected'); if(!sel){ toast('Selecciona un tunnel','warn'); return; } const id=sel.dataset.id; const vps=prompt('VPS id:',sel.dataset.vps||''); if(vps==='false') return; const local=prompt('Local (ej 127.0.0.1:9000):',sel.dataset.local||'127.0.0.1:9000'); if(local==='false') return; const remote=prompt('Remoto (ej 0.0.0.0:18097):',sel.dataset.remote||''); if(remote==='false') return; postJson('/api/v1/tunnels/'+encodeURIComponent(id)+'/edit',{vps_id:vps, local, remote}); }
-function showAddVps(){ const id=prompt('ID VPS:'); if(!id) return; const host=prompt('Host/IP:'); if(!host) return; const user=prompt('Usuario:','debian'); const pass=prompt('Password (opcional):')||''; postJson('/api/v1/vps/add',{id, host, user, password:pass}); }
-function editVpsSel(){ const sel=document.querySelector('#vps-body tr.selected'); if(!sel){ toast('Selecciona un VPS','warn'); return; } const host=prompt('Nuevo host:', sel.dataset.host||''); if(host===null) return; const user=prompt('Usuario:', sel.dataset.user||'debian'); if(user===null) return; const port=prompt('Puerto:', sel.dataset.port||'22'); if(port===null) return; const pass=prompt('Password (dejar vacio = no cambiar):','') || ''; postJson('/api/v1/vps/'+encodeURIComponent(sel.dataset.id)+'/edit',{host, user, port:parseInt(port)||22, password:pass}); }
-function deleteVpsSel(){ const sel=document.querySelector('#vps-body tr.selected'); if(!sel){ toast('Selecciona un VPS','warn'); return; } if(!confirm('Eliminar VPS '+sel.dataset.id+'?')) return; activity('Eliminando...','info'); post('/api/v1/vps/remove/'+encodeURIComponent(sel.dataset.id)); }
-function showAddForward(){ const id=prompt('ID forward:'); if(!id) return; const listen=prompt('Puerto listen:'); if(!listen) return; const distro=prompt('Distro:','Debian'); const wslp=prompt('Puerto WSL:'); postJson('/api/v1/forwards/add',{id, listen_port:parseInt(listen), distro, wsl_port:parseInt(wslp), auto_apply:true}); }
-function deleteForwardSel(){ const sel=document.querySelector('#fwd-body tr.selected'); if(!sel){ toast('Selecciona un forward','warn'); return; } post('/api/v1/forwards/remove/'+encodeURIComponent(sel.dataset.id)); }
+function tunnelActionSel(op){ const sel=document.querySelector('#tun-body tr.selected'); if(!sel){ toast('Selecciona un tunnel','warn'); return; } const labels={start:'Iniciando tunnel...',stop:'Deteniendo tunnel...',restart:'Reiniciando tunnel...'}; post('/api/v1/tunnels/'+encodeURIComponent(sel.dataset.id)+'/'+op, labels[op]||'Procesando tunnel...'); }
+function deleteTunnelSel(){ const sel=document.querySelector('#tun-body tr.selected'); if(!sel){ toast('Selecciona un tunnel','warn'); return; } if(!confirm('Eliminar '+sel.dataset.id+'?')) return; post('/api/v1/tunnels/'+encodeURIComponent(sel.dataset.id)+'/remove', 'Eliminando tunnel...'); }
+function showAddTunnel(){ const id=prompt('ID del tunnel:'); if(!id) return; const vps=prompt('VPS id:'); if(!vps) return; const local=prompt('Local (ej 127.0.0.1:9000):','127.0.0.1:9000'); if(!local) return; const remote=prompt('Remoto (ej 0.0.0.0:18097):','0.0.0.0:18097'); if(!remote) return; postJson('/api/v1/tunnels/add',{id, vps_id:vps, local, remotes:[remote]}, 'Creando tunnel...'); }
+function showEditTunnel(){ const sel=document.querySelector('#tun-body tr.selected'); if(!sel){ toast('Selecciona un tunnel','warn'); return; } const id=sel.dataset.id; const vps=prompt('VPS id:',sel.dataset.vps||''); if(vps==='false') return; const local=prompt('Local (ej 127.0.0.1:9000):',sel.dataset.local||'127.0.0.1:9000'); if(local==='false') return; const remote=prompt('Remoto (ej 0.0.0.0:18097):',sel.dataset.remote||''); if(remote==='false') return; postJson('/api/v1/tunnels/'+encodeURIComponent(id)+'/edit',{vps_id:vps, local, remote}, 'Editando tunnel...'); }
+function showAddVps(){ const id=prompt('ID VPS:'); if(!id) return; const host=prompt('Host/IP:'); if(!host) return; const user=prompt('Usuario:','debian'); const pass=prompt('Password (opcional):')||''; postJson('/api/v1/vps/add',{id, host, user, password:pass}, 'Registrando VPS...'); }
+function editVpsSel(){ const sel=document.querySelector('#vps-body tr.selected'); if(!sel){ toast('Selecciona un VPS','warn'); return; } const host=prompt('Nuevo host:', sel.dataset.host||''); if(host===null) return; const user=prompt('Usuario:', sel.dataset.user||'debian'); if(user===null) return; const port=prompt('Puerto:', sel.dataset.port||'22'); if(port===null) return; const pass=prompt('Password (dejar vacio = no cambiar):','') || ''; postJson('/api/v1/vps/'+encodeURIComponent(sel.dataset.id)+'/edit',{host, user, port:parseInt(port)||22, password:pass}, 'Editando VPS...'); }
+function deleteVpsSel(){ const sel=document.querySelector('#vps-body tr.selected'); if(!sel){ toast('Selecciona un VPS','warn'); return; } if(!confirm('Eliminar VPS '+sel.dataset.id+'?')) return; post('/api/v1/vps/remove/'+encodeURIComponent(sel.dataset.id), 'Eliminando VPS...'); }
+function toggleFwdForm(){
+  const panel = document.getElementById('fwd-form-panel');
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'block';
+  if(!visible) populateFwdDistro();
+}
+function populateFwdDistro(){
+  const sel = document.getElementById('fwd-distro');
+  if(!sel) return;
+  const cur = sel.value;
+  api('/api/v1/state').then(d => {
+    sel.innerHTML = '';
+    (d.distros||[]).forEach(dd => {
+      const o = document.createElement('option');
+      o.value = dd.name; o.textContent = dd.name;
+      sel.appendChild(o);
+    });
+    if(cur) sel.value = cur;
+  });
+}
+function submitFwdForm(){
+  const id = document.getElementById('fwd-id').value.trim();
+  const listen = parseInt(document.getElementById('fwd-listen').value);
+  const distro = document.getElementById('fwd-distro').value;
+  const wslport = parseInt(document.getElementById('fwd-wslport').value);
+  const proto = document.getElementById('fwd-proto').value;
+  if(!id || !listen || !distro || !wslport){ toast('Completa todos los campos','err'); return; }
+  postJson('/api/v1/forwards/add',{id, listen_port:listen, distro, wsl_port:wslport, protocol:proto, auto_apply:true}, 'Creando forward...');
+  document.getElementById('fwd-form-panel').style.display = 'none';
+}
+function deleteForwardSel(){ const sel=document.querySelector('#fwd-body tr.selected'); if(!sel){ toast('Selecciona un forward','warn'); return; } post('/api/v1/forwards/remove/'+encodeURIComponent(sel.dataset.id), 'Eliminando forward...'); }
 function renderForwards(list){ const b=document.getElementById('fwd-body'); b.innerHTML=''; if(!list||!list.length){ b.innerHTML='<tr><td colspan=6 class="empty-state">sin forwards</td></tr>'; return; } for(const f of list){ const tr=document.createElement('tr'); tr.dataset.id=f.id; tr.innerHTML='<td>'+esc(f.id)+'</td><td>:'+esc(f.listen_port)+'</td><td>'+esc(f.wsl_distro||'--')+'</td><td>:'+esc(f.wsl_port)+'</td><td>'+esc(f.protocol||'tcp')+'</td><td>'+badge(f.state)+'</td>'; b.appendChild(tr); } }
 function renderTunnels(list){ const b=document.getElementById('tun-body'); b.innerHTML=''; if(!list||!list.length){ b.innerHTML='<tr><td colspan=6 class="empty-state">sin tunnels</td></tr>'; return; } for(const t of list){ const tr=document.createElement('tr'); tr.dataset.id=t.id; tr.dataset.vps=t.vps_id||''; tr.dataset.local=t.local||''; tr.dataset.remote=(t.remote||[]).join(', '); tr.innerHTML='<td>'+esc(t.id)+'</td><td>'+esc(t.type||'ssh')+'</td><td>'+esc(t.vps_id||'--')+'</td><td>'+esc(t.local)+'</td><td>'+esc((t.remote||[]).join(', '))+'</td><td>'+badge(t.state)+'</td>'; b.appendChild(tr); } }
 function renderVps(list){ const b=document.getElementById('vps-body'); b.innerHTML=''; const sel=document.getElementById('pub-vps'); if(sel){ const cur=sel.value; sel.innerHTML=''; list.forEach(v=>{const o=document.createElement('option');o.value=v.id;o.textContent=v.id;sel.appendChild(o);}); if(cur) sel.value=cur; else if(list[0]) sel.value=list[0].id; } if(!list||!list.length){ b.innerHTML='<tr><td colspan=4 class="empty-state">sin VPS</td></tr>'; return; } for(const v of list){ const tr=document.createElement('tr'); tr.dataset.id=v.id; tr.dataset.host=v.host; tr.dataset.user=v.user; tr.dataset.port=v.port; tr.innerHTML='<td>'+esc(v.id)+'</td><td>'+esc(v.host)+'</td><td>'+esc(v.user)+'</td><td>'+esc(v.port)+'</td>'; b.appendChild(tr); } }
@@ -1827,7 +1999,7 @@ async function refreshEvents(){ try{ const d=await api('/api/v1/events?limit=50'
 let WS=null; let wsTries=0;
 function connectWS(){
   const proto=location.protocol==='https:'?'wss:':'ws:';
-  const url=proto+'//'+location.host+'/ws';
+  const url=proto+'//'+location.host+'/ws?token='+encodeURIComponent(TOKEN);
   try{ WS=new WebSocket(url); }catch(e){ setTimeout(connectWS, 5000); return; }
   WS.onopen=()=>{ document.getElementById('ws-dot').className='ws-status ws-on'; document.getElementById('ws-status').textContent='WS'; document.getElementById('ws-indicator').style.background='var(--ok)'; wsTries=0; };
   WS.onclose=()=>{ document.getElementById('ws-dot').className='ws-status ws-off'; document.getElementById('ws-status').textContent=''; document.getElementById('ws-indicator').style.background='var(--err)'; WS=null; wsTries++; setTimeout(connectWS, Math.min(3000*wsTries, 15000)); };
