@@ -283,6 +283,27 @@ def shutdown_all() -> dict:
         return {"ok": False, "error": str(e)}
 
 
+def start_all() -> dict:
+    if not wsl_health_check():
+        return {"ok": False, "error": "WSL no responde - reinicia el PC"}
+    try:
+        started = []
+        failed = []
+        for d in wsl_provider().list_distros():
+            if d.state != "Running":
+                r = wsl_provider().start(d.name)
+                if r.ok:
+                    started.append(d.name)
+                else:
+                    failed.append(d.name)
+        if failed:
+            return {"ok": False, "error": f"Fallo al iniciar: {', '.join(failed)}",
+                    "message": f"Iniciadas {len(started)}, fallaron {len(failed)}"}
+        return {"ok": True, "message": f"Todas las distros iniciadas ({len(started)})"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def get_ip(name: str) -> str | None:
     if not wsl_health_check():
         return None

@@ -1238,6 +1238,14 @@ class WebPanel:
                 name, op = parts[3], parts[4]
                 self.metrics.record_event("web_distro_" + op, distro=name)
                 return self._distro_action(name, op)
+            if len(parts) == 4 and parts[3] == "start-all":
+                from wsl_port import core
+                self.metrics.record_event("web_distro_start_all")
+                return core.start_all()
+            if len(parts) == 4 and parts[3] == "shutdown-all":
+                from wsl_port import core
+                self.metrics.record_event("web_distro_shutdown_all")
+                return core.shutdown_all()
         # Publish / Unpublish
         if parts[:3] == ["api", "v1", "publish"]:
             distro = str(body.get("distro") or "").strip()
@@ -1603,6 +1611,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <button data-cmd="distroActionSel:start">Iniciar</button>
     <button class="warn" data-cmd="distroActionSel:stop">Detener</button>
     <button data-cmd="distroActionSel:restart">Reiniciar</button>
+    <button class="success outline" data-cmd="startAllDistros">Encender todo</button>
+    <button class="danger outline" data-cmd="shutdownAllDistros">Apagar todo WSL</button>
     <button data-cmd="showMetricsSel">Metricas</button>
     <button class="success outline" data-cmd="showCreateDistro">Crear...</button>
     <button class="danger outline" data-cmd="deleteDistroSel">Eliminar</button>
@@ -1880,6 +1890,8 @@ function renderDistros(list){
   }
 }
 function distroActionSel(op){ const id=document.querySelector('#distro-body tr.selected'); if(!id){ toast('Selecciona una distro','warn'); return; } const name=id.dataset.id; const labels={start:'Iniciando '+name+'...',stop:'Deteniendo '+name+'...',restart:'Reiniciando '+name+'...',delete:'Eliminando '+name+'...'}; post('/api/v1/distro/'+encodeURIComponent(name)+'/'+op, labels[op]||op+' '+name+'...'); }
+function startAllDistros(){ if(!confirm('Iniciar TODAS las distros WSL?')) return; post('/api/v1/distro/start-all', 'Iniciando todas las distros...'); }
+function shutdownAllDistros(){ if(!confirm('Apagar TODAS las distros WSL y detener WSL completamente?')) return; post('/api/v1/distro/shutdown-all', 'Apagando WSL...'); }
 function exportDistroSel(){ const sel=document.querySelector('#distro-body tr.selected'); if(!sel){ toast('Selecciona una distro','warn'); return; } exportDistro(sel.dataset.id); }
 function deleteDistroSel(){ const sel=document.querySelector('#distro-body tr.selected'); if(!sel){ toast('Selecciona una distro','warn'); return; } if(!confirm('Eliminar distro '+sel.dataset.id+' y TODOS sus datos?')) return; post('/api/v1/distro/'+encodeURIComponent(sel.dataset.id)+'/delete', 'Eliminando distro...'); }
 function showMetricsSel(){ const sel=document.querySelector('#distro-body tr.selected'); if(!sel){ toast('Selecciona una distro','warn'); return; } api('/api/v1/distro/'+encodeURIComponent(sel.dataset.id)+'/metrics').then(d=>{ if(d.ok){ const m=document.getElementById('distro-body'); const row=m.querySelector('tr.selected'); if(row) row.title=JSON.stringify(d,null,2); alert('RAM: '+d.ram_used_mb+'/'+d.ram_total_mb+' MB ('+d.ram_percent+'%)'); } else alert('Error: '+d.error); }); }
