@@ -1638,17 +1638,61 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <div id="activity"></div>
   <div class="toolbar">
     <button class="success" data-cmd="refresh">Refrescar</button>
-    <button data-cmd="showAddTunnel">Nuevo Tunnel...</button>
-    <button data-cmd="showEditTunnel">Editar...</button>
+    <button data-cmd="toggleTunForm">Nuevo Tunnel...</button>
+    <button data-cmd="toggleTunEditForm">Editar...</button>
     <button data-cmd="tunnelActionSel:start">Iniciar</button>
     <button class="warn" data-cmd="tunnelActionSel:stop">Detener</button>
     <button class="danger outline" data-cmd="deleteTunnelSel">Eliminar</button>
   </div>
+  <div id="tun-form-panel" class="card" style="display:none;">
+    <h2>Nuevo Tunnel SSH</h2>
+    <div class="form" style="flex-direction:column;gap:8px;">
+      <div class="form"><label style="width:120px">ID:</label><input id="tun-id" placeholder="mi-tunnel" style="width:200px"></div>
+      <div class="form"><label style="width:120px">VPS:</label><select id="tun-vps"></select></div>
+      <div class="form"><label style="width:120px">Host local:</label><input id="tun-lhost" value="127.0.0.1" style="width:150px"></div>
+      <div class="form"><label style="width:120px">Puerto local:</label><input id="tun-lport" type="number" value="9000" style="width:100px"></div>
+      <div class="form"><label style="width:120px">Host remoto:</label><input id="tun-rhost" value="0.0.0.0" style="width:150px"></div>
+      <div class="form"><label style="width:120px">Puerto remoto:</label><input id="tun-rport" type="number" value="18097" style="width:100px"></div>
+      <div class="form"><button class="success" data-cmd="submitTunForm">Crear Tunnel</button><button class="outline" data-cmd="toggleTunForm">Cancelar</button></div>
+    </div>
+  </div>
+  <div id="tun-edit-panel" class="card" style="display:none;">
+    <h2>Editar Tunnel</h2>
+    <div class="form" style="flex-direction:column;gap:8px;">
+      <div class="form"><label style="width:120px">VPS:</label><select id="tun-evps"></select></div>
+      <div class="form"><label style="width:120px">Host local:</label><input id="tun-elhost" style="width:150px"></div>
+      <div class="form"><label style="width:120px">Puerto local:</label><input id="tun-elport" type="number" style="width:100px"></div>
+      <div class="form"><label style="width:120px">Host remoto:</label><input id="tun-erhost" style="width:150px"></div>
+      <div class="form"><label style="width:120px">Puerto remoto:</label><input id="tun-erport" type="number" style="width:100px"></div>
+      <div class="form"><button class="success" data-cmd="submitTunEdit">Guardar</button><button class="outline" data-cmd="toggleTunEditForm">Cancelar</button></div>
+    </div>
+  </div>
   <div class="card"><table><thead><tr><th>ID</th><th>Tipo</th><th>VPS</th><th>Local</th><th>Remoto</th><th>Estado</th></tr></thead><tbody id="tun-body"></tbody></table></div>
   <div class="toolbar">
-    <button data-cmd="showAddVps">Nuevo VPS...</button>
-    <button class="outline" data-cmd="editVpsSel">Editar VPS...</button>
+    <button data-cmd="toggleVpsForm">Nuevo VPS...</button>
+    <button class="outline" data-cmd="toggleVpsEditForm">Editar VPS...</button>
     <button class="danger outline" data-cmd="deleteVpsSel">Eliminar VPS</button>
+  </div>
+  <div id="vps-form-panel" class="card" style="display:none;">
+    <h2>Nuevo VPS</h2>
+    <div class="form" style="flex-direction:column;gap:8px;">
+      <div class="form"><label style="width:120px">ID:</label><input id="vps-id" placeholder="mi-vps" style="width:200px"></div>
+      <div class="form"><label style="width:120px">Host / IP:</label><input id="vps-host" placeholder="1.2.3.4" style="width:200px"></div>
+      <div class="form"><label style="width:120px">Usuario SSH:</label><input id="vps-user" value="debian" style="width:150px"></div>
+      <div class="form"><label style="width:120px">Puerto SSH:</label><input id="vps-port" type="number" value="22" style="width:80px"></div>
+      <div class="form"><label style="width:120px">Password:</label><input id="vps-pass" type="password" placeholder="(opcional)" style="width:200px"></div>
+      <div class="form"><button class="success" data-cmd="submitVpsForm">Registrar VPS</button><button class="outline" data-cmd="toggleVpsForm">Cancelar</button></div>
+    </div>
+  </div>
+  <div id="vps-edit-panel" class="card" style="display:none;">
+    <h2>Editar VPS</h2>
+    <div class="form" style="flex-direction:column;gap:8px;">
+      <div class="form"><label style="width:120px">Host / IP:</label><input id="vps-ehost" style="width:200px"></div>
+      <div class="form"><label style="width:120px">Usuario SSH:</label><input id="vps-euser" style="width:150px"></div>
+      <div class="form"><label style="width:120px">Puerto SSH:</label><input id="vps-eport" type="number" style="width:80px"></div>
+      <div class="form"><label style="width:120px">Password:</label><input id="vps-epass" type="password" placeholder="(dejar vacio = no cambiar)" style="width:200px"></div>
+      <div class="form"><button class="success" data-cmd="submitVpsEdit">Guardar</button><button class="outline" data-cmd="toggleVpsEditForm">Cancelar</button></div>
+    </div>
   </div>
   <div class="card"><table><thead><tr><th>VPS</th><th>Host</th><th>Usuario</th><th>Puerto</th></tr></thead><tbody id="vps-body"></tbody></table></div>
 </div>
@@ -1943,10 +1987,84 @@ function doUnpublish(){
 }
 function tunnelActionSel(op){ const sel=document.querySelector('#tun-body tr.selected'); if(!sel){ toast('Selecciona un tunnel','warn'); return; } const labels={start:'Iniciando tunnel...',stop:'Deteniendo tunnel...',restart:'Reiniciando tunnel...'}; post('/api/v1/tunnels/'+encodeURIComponent(sel.dataset.id)+'/'+op, labels[op]||'Procesando tunnel...'); }
 function deleteTunnelSel(){ const sel=document.querySelector('#tun-body tr.selected'); if(!sel){ toast('Selecciona un tunnel','warn'); return; } if(!confirm('Eliminar '+sel.dataset.id+'?')) return; post('/api/v1/tunnels/'+encodeURIComponent(sel.dataset.id)+'/remove', 'Eliminando tunnel...'); }
-function showAddTunnel(){ const id=prompt('ID del tunnel:'); if(!id) return; const vps=prompt('VPS id:'); if(!vps) return; const local=prompt('Local (ej 127.0.0.1:9000):','127.0.0.1:9000'); if(!local) return; const remote=prompt('Remoto (ej 0.0.0.0:18097):','0.0.0.0:18097'); if(!remote) return; postJson('/api/v1/tunnels/add',{id, vps_id:vps, local, remotes:[remote]}, 'Creando tunnel...'); }
-function showEditTunnel(){ const sel=document.querySelector('#tun-body tr.selected'); if(!sel){ toast('Selecciona un tunnel','warn'); return; } const id=sel.dataset.id; const vps=prompt('VPS id:',sel.dataset.vps||''); if(vps==='false') return; const local=prompt('Local (ej 127.0.0.1:9000):',sel.dataset.local||'127.0.0.1:9000'); if(local==='false') return; const remote=prompt('Remoto (ej 0.0.0.0:18097):',sel.dataset.remote||''); if(remote==='false') return; postJson('/api/v1/tunnels/'+encodeURIComponent(id)+'/edit',{vps_id:vps, local, remote}, 'Editando tunnel...'); }
-function showAddVps(){ const id=prompt('ID VPS:'); if(!id) return; const host=prompt('Host/IP:'); if(!host) return; const user=prompt('Usuario:','debian'); const pass=prompt('Password (opcional):')||''; postJson('/api/v1/vps/add',{id, host, user, password:pass}, 'Registrando VPS...'); }
-function editVpsSel(){ const sel=document.querySelector('#vps-body tr.selected'); if(!sel){ toast('Selecciona un VPS','warn'); return; } const host=prompt('Nuevo host:', sel.dataset.host||''); if(host===null) return; const user=prompt('Usuario:', sel.dataset.user||'debian'); if(user===null) return; const port=prompt('Puerto:', sel.dataset.port||'22'); if(port===null) return; const pass=prompt('Password (dejar vacio = no cambiar):','') || ''; postJson('/api/v1/vps/'+encodeURIComponent(sel.dataset.id)+'/edit',{host, user, port:parseInt(port)||22, password:pass}, 'Editando VPS...'); }
+/* ---- Tunnel inline forms ---- */
+function toggleTunForm(){
+  const p=document.getElementById('tun-form-panel'); const v=p.style.display!=='none'; p.style.display=v?'none':'block';
+  document.getElementById('tun-edit-panel').style.display='none';
+  if(!v) populateTunVps('tun-vps');
+}
+function toggleTunEditForm(){
+  const sel=document.querySelector('#tun-body tr.selected');
+  if(!sel){ toast('Selecciona un tunnel para editar','warn'); return; }
+  const p=document.getElementById('tun-edit-panel'); const v=p.style.display!=='none';
+  if(v){ p.style.display='none'; return; }
+  p.style.display='block';
+  document.getElementById('tun-form-panel').style.display='none';
+  populateTunVps('tun-evps').then(()=>{
+    const t=sel.dataset;
+    document.getElementById('tun-evps').value=t.vps||'';
+    const lp=(t.local||'').split(':'); document.getElementById('tun-elhost').value=lp[0]||'127.0.0.1'; document.getElementById('tun-elport').value=lp[1]||'';
+    const rp=(t.remote||'').split(':'); document.getElementById('tun-erhost').value=rp[0]||'0.0.0.0'; document.getElementById('tun-erport').value=rp[1]||'';
+  });
+}
+function populateTunVps(selId){ return api('/api/v1/vps').then(d=>{
+  const sel=document.getElementById(selId); if(!sel) return; const cur=sel.value; sel.innerHTML='';
+  (d.vps||[]).forEach(v=>{const o=document.createElement('option');o.value=v.id;o.textContent=v.id+' ('+v.host+')';sel.appendChild(o);});
+  if(cur) sel.value=cur;
+});}
+function submitTunForm(){
+  const id=document.getElementById('tun-id').value.trim(), vps=document.getElementById('tun-vps').value;
+  const lh=document.getElementById('tun-lhost').value.trim()||'127.0.0.1', lp=document.getElementById('tun-lport').value;
+  const rh=document.getElementById('tun-rhost').value.trim()||'0.0.0.0', rp=document.getElementById('tun-rport').value;
+  if(!id||!vps||!lp||!rp){ toast('Completa todos los campos','err'); return; }
+  postJson('/api/v1/tunnels/add',{id, vps_id:vps, local:lh+':'+lp, remotes:[rh+':'+rp]}, 'Creando tunnel...');
+  document.getElementById('tun-form-panel').style.display='none';
+}
+function submitTunEdit(){
+  const sel=document.querySelector('#tun-body tr.selected'); if(!sel) return;
+  const vps=document.getElementById('tun-evps').value;
+  const lh=document.getElementById('tun-elhost').value.trim()||'127.0.0.1', lp=document.getElementById('tun-elport').value;
+  const rh=document.getElementById('tun-erhost').value.trim()||'0.0.0.0', rp=document.getElementById('tun-erport').value;
+  if(!vps||!lp||!rp){ toast('Completa todos los campos','err'); return; }
+  postJson('/api/v1/tunnels/'+encodeURIComponent(sel.dataset.id)+'/edit',{vps_id:vps, local:lh+':'+lp, remote:rh+':'+rp}, 'Editando tunnel...');
+  document.getElementById('tun-edit-panel').style.display='none';
+}
+/* ---- VPS inline forms ---- */
+function toggleVpsForm(){
+  const p=document.getElementById('vps-form-panel'); const v=p.style.display!=='none'; p.style.display=v?'none':'block';
+  document.getElementById('vps-edit-panel').style.display='none';
+}
+function toggleVpsEditForm(){
+  const sel=document.querySelector('#vps-body tr.selected');
+  if(!sel){ toast('Selecciona un VPS para editar','warn'); return; }
+  const p=document.getElementById('vps-edit-panel'); const v=p.style.display!=='none';
+  if(v){ p.style.display='none'; return; }
+  p.style.display='block';
+  document.getElementById('vps-form-panel').style.display='none';
+  const t=sel.dataset;
+  document.getElementById('vps-ehost').value=t.host||'';
+  document.getElementById('vps-euser').value=t.user||'debian';
+  document.getElementById('vps-eport').value=t.port||'22';
+  document.getElementById('vps-epass').value='';
+}
+function submitVpsForm(){
+  const id=document.getElementById('vps-id').value.trim(), host=document.getElementById('vps-host').value.trim();
+  const user=document.getElementById('vps-user').value.trim()||'debian', port=parseInt(document.getElementById('vps-port').value)||22;
+  const pass=document.getElementById('vps-pass').value;
+  if(!id||!host){ toast('ID y Host son obligatorios','err'); return; }
+  postJson('/api/v1/vps/add',{id, host, user, port, password:pass}, 'Registrando VPS...');
+  document.getElementById('vps-form-panel').style.display='none';
+}
+function submitVpsEdit(){
+  const sel=document.querySelector('#vps-body tr.selected'); if(!sel) return;
+  const host=document.getElementById('vps-ehost').value.trim();
+  const user=document.getElementById('vps-euser').value.trim()||'debian';
+  const port=parseInt(document.getElementById('vps-eport').value)||22;
+  const pass=document.getElementById('vps-epass').value;
+  if(!host){ toast('Host es obligatorio','err'); return; }
+  postJson('/api/v1/vps/'+encodeURIComponent(sel.dataset.id)+'/edit',{host, user, port, password:pass}, 'Editando VPS...');
+  document.getElementById('vps-edit-panel').style.display='none';
+}
 function deleteVpsSel(){ const sel=document.querySelector('#vps-body tr.selected'); if(!sel){ toast('Selecciona un VPS','warn'); return; } if(!confirm('Eliminar VPS '+sel.dataset.id+'?')) return; post('/api/v1/vps/remove/'+encodeURIComponent(sel.dataset.id), 'Eliminando VPS...'); }
 function toggleFwdForm(){
   const panel = document.getElementById('fwd-form-panel');
