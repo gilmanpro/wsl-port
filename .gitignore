@@ -1,21 +1,50 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 *.egg-info/
+*.egg
 dist/
 build/
+.eggs/
+*.whl
+
+# Virtual environments
 .venv/
 .venv-linux/
-.pytest_cache/
-*.spec
-tmp/
-temp_vars.txt
+venv/
+env/
+.env
+.env.*
 
-# Security: sensitive files
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# Security: secrets, keys, credentials
 secrets.json
 config.json
 *.key
 *.pem
+*.crt
+*.cer
+*.p12
+*.pfx
+*.jks
+*.keystore
 id_rsa
 id_rsa.*
 id_ed25519
@@ -24,25 +53,48 @@ id_ecdsa
 id_ecdsa.*
 id_dsa
 id_dsa.*
-*.p12
-*.pfx
-*.jks
-*.keystore
+*.pem.key
 
-# Logs and data
+# Cookies / session files
+cookies.txt
+*.cookies
+
+# Logs and databases
 *.log
 *.db
 *.sqlite
 *.sqlite3
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# Temporary files
+tmp/
+temp/
+temp_vars.txt
+*.tmp
+*.bak
+*.orig
 
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
+# Build artifacts
+*.spec
+*.manifest
+*.exe
+*.dll
+*.so
+*.dylib
+
+#pytest
+.pytest_cache/
+.coverage
+htmlcov/
+.nox/
+
+# Environment / deployment
+.env.local
+.env.production
+*.env
+
+# WSL data (large, machine-specific)
+*.tar
+*.vhdx
+
+# Metrics database (auto-generated)
+metrics.db
