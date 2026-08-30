@@ -1359,6 +1359,17 @@ class WebPanel:
                     return {"ok": True, "message": "Configuración MCP aplicada"}
                 except Exception as e:
                     return {"ok": False, "error": f"Error aplicando configuración MCP: {str(e)}"}
+        if parts[:3] == ["api", "v1", "maintenance"]:
+            if len(parts) == 4 and parts[3] == "on":
+                store.cfg.maintenance.active = True
+                store.save()
+                return {"ok": True, "message": "Modo mantenimiento activado"}
+            if len(parts) == 4 and parts[3] == "off":
+                store.cfg.maintenance.active = False
+                store.save()
+                return {"ok": True, "message": "Modo mantenimiento desactivado"}
+            if len(parts) == 4 and parts[3] == "status":
+                return {"ok": True, "active": store.cfg.maintenance.active}
         return {"ok": False, "error": f"accion desconocida: {path}"}
 
     def _distro_action(self, name: str, op: str) -> dict[str, Any]:
@@ -1812,7 +1823,7 @@ function bindCmdEvents(){
     el.setAttribute('data-cmd', spec);
   });
 }
-function clearAllForwards(){ if(confirm('Limpiar TODOS los forwards?')) post('/api/v1/forwards/clear', 'Limpiando forwards...'); }
+async function clearAllForwards(){ if(await showConfirm('Limpiar forwards','Limpiar TODOS los forwards?')) post('/api/v1/forwards/clear', 'Limpiando forwards...'); }
 function esc(v){ const d=document.createElement('div'); d.textContent=(v===null||v===undefined)?'':String(v); return d.innerHTML; }
 function showDialog(title, fields, onOk){
   const overlay = document.createElement('div');
@@ -1844,6 +1855,17 @@ function showDialog(title, fields, onOk){
     onOk(vals);
   };
   overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.remove(); });
+}
+function showConfirm(title, msg){
+  return new Promise(resolve=>{
+    const ov=document.createElement('div');
+    ov.className='dialog-overlay';
+    ov.innerHTML='<div class="dialog"><h3>'+esc(title)+'</h3><p style="color:var(--text);font-size:13px;margin:0 0 16px;line-height:1.4">'+esc(msg)+'</p><div class="btns"><button class="outline" id="cf-cancel">Cancelar</button><button class="danger" id="cf-ok">Confirmar</button></div></div>';
+    document.body.appendChild(ov);
+    ov.querySelector('#cf-cancel').onclick=()=>{ov.remove();resolve(false);};
+    ov.querySelector('#cf-ok').onclick=()=>{ov.remove();resolve(true);};
+    ov.addEventListener('click',e=>{if(e.target===ov){ov.remove();resolve(false);}});
+  });
 }
 function logout(){ localStorage.removeItem('pf_token'); document.cookie='pf_token=; Path=/; Max-Age=0; SameSite=Strict'; window.location.href='/login'; }
 function badge(s){
@@ -1890,11 +1912,11 @@ function renderDistros(list){
   }
 }
 function distroActionSel(op){ const id=document.querySelector('#distro-body tr.selected'); if(!id){ toast('Selecciona una distro','warn'); return; } const name=id.dataset.id; const labels={start:'Iniciando '+name+'...',stop:'Deteniendo '+name+'...',restart:'Reiniciando '+name+'...',delete:'Eliminando '+name+'...'}; post('/api/v1/distro/'+encodeURIComponent(name)+'/'+op, labels[op]||op+' '+name+'...'); }
-function startAllDistros(){ if(!confirm('Iniciar TODAS las distros WSL?')) return; post('/api/v1/distro/start-all', 'Iniciando todas las distros...'); }
-function shutdownAllDistros(){ if(!confirm('Apagar TODAS las distros WSL y detener WSL completamente?')) return; post('/api/v1/distro/shutdown-all', 'Apagando WSL...'); }
+async function startAllDistros(){ if(!await showConfirm('Iniciar distros','Iniciar TODAS las distros WSL?')) return; post('/api/v1/distro/start-all', 'Iniciando todas las distros...'); }
+async function shutdownAllDistros(){ if(!await showConfirm('Apagar WSL','Apagar TODAS las distros WSL y detener WSL completamente?')) return; post('/api/v1/distro/shutdown-all', 'Apagando WSL...'); }
 function exportDistroSel(){ const sel=document.querySelector('#distro-body tr.selected'); if(!sel){ toast('Selecciona una distro','warn'); return; } exportDistro(sel.dataset.id); }
-function deleteDistroSel(){ const sel=document.querySelector('#distro-body tr.selected'); if(!sel){ toast('Selecciona una distro','warn'); return; } if(!confirm('Eliminar distro '+sel.dataset.id+' y TODOS sus datos?')) return; post('/api/v1/distro/'+encodeURIComponent(sel.dataset.id)+'/delete', 'Eliminando distro...'); }
-function showMetricsSel(){ const sel=document.querySelector('#distro-body tr.selected'); if(!sel){ toast('Selecciona una distro','warn'); return; } api('/api/v1/distro/'+encodeURIComponent(sel.dataset.id)+'/metrics').then(d=>{ if(d.ok){ const m=document.getElementById('distro-body'); const row=m.querySelector('tr.selected'); if(row) row.title=JSON.stringify(d,null,2); alert('RAM: '+d.ram_used_mb+'/'+d.ram_total_mb+' MB ('+d.ram_percent+'%)'); } else alert('Error: '+d.error); }); }
+async function deleteDistroSel(){ const sel=document.querySelector('#distro-body tr.selected'); if(!sel){ toast('Selecciona una distro','warn'); return; } if(!await showConfirm('Eliminar distro','Eliminar distro '+sel.dataset.id+' y TODOS sus datos?')) return; post('/api/v1/distro/'+encodeURIComponent(sel.dataset.id)+'/delete', 'Eliminando distro...'); }
+async function showMetricsSel(){ const sel=document.querySelector('#distro-body tr.selected'); if(!sel){ toast('Selecciona una distro','warn'); return; } const d=await api('/api/v1/distro/'+encodeURIComponent(sel.dataset.id)+'/metrics'); if(d.ok){ toast('RAM: '+d.ram_used_mb+'/'+d.ram_total_mb+' MB ('+d.ram_percent+'%)','ok'); } else toast(d.error||'Error al obtener metricas','err'); }
 function showCreateDistro(){
   activity('Cargando distros disponibles...','info');
   api('/api/v1/distro/available',{method:'POST'}).then(d=>{
@@ -1998,7 +2020,7 @@ function doUnpublish(){
   api('/api/v1/unpublish/'+encodeURIComponent(tid),{method:'POST'}).then(d=>{activity(d.message||'Eliminado','success'); refresh();});
 }
 function tunnelActionSel(op){ const sel=document.querySelector('#tun-body tr.selected'); if(!sel){ toast('Selecciona un tunnel','warn'); return; } const labels={start:'Iniciando tunnel...',stop:'Deteniendo tunnel...',restart:'Reiniciando tunnel...'}; post('/api/v1/tunnels/'+encodeURIComponent(sel.dataset.id)+'/'+op, labels[op]||'Procesando tunnel...'); }
-function deleteTunnelSel(){ const sel=document.querySelector('#tun-body tr.selected'); if(!sel){ toast('Selecciona un tunnel','warn'); return; } if(!confirm('Eliminar '+sel.dataset.id+'?')) return; post('/api/v1/tunnels/'+encodeURIComponent(sel.dataset.id)+'/remove', 'Eliminando tunnel...'); }
+async function deleteTunnelSel(){ const sel=document.querySelector('#tun-body tr.selected'); if(!sel){ toast('Selecciona un tunnel','warn'); return; } if(!await showConfirm('Eliminar tunnel','Eliminar tunnel '+sel.dataset.id+'?')) return; post('/api/v1/tunnels/'+encodeURIComponent(sel.dataset.id)+'/remove', 'Eliminando tunnel...'); }
 /* ---- Tunnel inline forms ---- */
 function toggleTunForm(){
   const p=document.getElementById('tun-form-panel'); const v=p.style.display!=='none'; p.style.display=v?'none':'block';
@@ -2077,7 +2099,7 @@ function submitVpsEdit(){
   postJson('/api/v1/vps/'+encodeURIComponent(sel.dataset.id)+'/edit',{host, user, port, password:pass}, 'Editando VPS...');
   document.getElementById('vps-edit-panel').style.display='none';
 }
-function deleteVpsSel(){ const sel=document.querySelector('#vps-body tr.selected'); if(!sel){ toast('Selecciona un VPS','warn'); return; } if(!confirm('Eliminar VPS '+sel.dataset.id+'?')) return; post('/api/v1/vps/remove/'+encodeURIComponent(sel.dataset.id), 'Eliminando VPS...'); }
+async function deleteVpsSel(){ const sel=document.querySelector('#vps-body tr.selected'); if(!sel){ toast('Selecciona un VPS','warn'); return; } if(!await showConfirm('Eliminar VPS','Eliminar VPS '+sel.dataset.id+'?')) return; post('/api/v1/vps/remove/'+encodeURIComponent(sel.dataset.id), 'Eliminando VPS...'); }
 function toggleFwdForm(){
   const panel = document.getElementById('fwd-form-panel');
   const visible = panel.style.display !== 'none';

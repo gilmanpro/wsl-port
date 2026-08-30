@@ -237,7 +237,7 @@ def test_panel_dashboard_incluye_distros(panel):
     assert "Distros WSL" in html
     assert "renderDistros" in html
     assert "distroAction" in html
-    assert "Tarea terminada" in html
+    assert "Hecho" in html
     # Export/import desde el navegador
     assert "exportDistro" in html
     assert "importDistro" in html
