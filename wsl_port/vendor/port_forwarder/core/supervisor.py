@@ -100,6 +100,10 @@ class Supervisor:
         self.maintenance = bool(store.cfg.maintenance.active)
         self._cfg_mtime = self._config_mtime()
         self._mcp_http = None                        # McpHttpServer (transport http)
+        # WSL siempre vivo: holders de sesion + watchdog de revivido
+        from .keepalive import DistroKeepalive
+        self.keepalive = DistroKeepalive(store, self.metrics,
+                                         clock=self.clock)
 
     # -- arranque / parada -----------------------------------------------------
 
@@ -144,6 +148,16 @@ class Supervisor:
                 self._maybe_reload_config()
                 self.run_once()
                 self._sample_traffic()
+                if not self.maintenance:
+                    # WSL siempre vivo: holders + revivido de caidas
+                    try:
+                        self.keepalive.cycle()
+                    except Exception:
+                        import logging
+
+                        logging.getLogger(
+                            "port-forwarder.supervisor").exception(
+                            "keepalive fallo en el ciclo")
             except Exception:
                 import logging
 
@@ -655,4 +669,5 @@ class Supervisor:
             "admin": sp.is_admin(),
             "forwards": forwards,
             "tunnels": tunnels,
+            "keepalive": self.keepalive.status(),
         }

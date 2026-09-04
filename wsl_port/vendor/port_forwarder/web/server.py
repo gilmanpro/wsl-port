@@ -695,6 +695,8 @@ class PanelHandler(BaseHTTPRequestHandler):
                 self._send(*_json(self.panel.vps_list()))
             elif path == "/api/v1/distros":
                 self._send(*_json(self.panel.distros_list()))
+            elif path == "/api/v1/keepalive":
+                self._send(*_json(self.panel.keepalive_status()))
             elif path == "/api/v1/mcp/settings":
                 store = self.panel.supervisor.store
                 cfg = store.cfg.mcp
@@ -1222,6 +1224,17 @@ class WebPanel:
                     })
         except Exception:
             pass
+        ka = getattr(self.supervisor, "keepalive", None)
+        if ka is not None:
+            try:
+                info = ka.status()
+            except Exception:  # noqa: BLE001
+                info = {}
+            for d in distros:
+                d["auto_revive"] = bool(
+                    info.get("enabled")
+                    and not d["name"].lower().startswith("docker-desktop")
+                    and d["name"] not in (info.get("stopped_by_user") or []))
         return distros
 
     def events(self, limit: int = 50) -> dict[str, Any]:
@@ -1261,7 +1274,21 @@ class WebPanel:
 
     def distros_list(self) -> dict[str, Any]:
         """Lista distros WSL via wsl.exe -l -v (timeout corto, no cuelga)."""
-        return {"ok": True, "distros": self._get_wsl_distros()}
+        distros = self._get_wsl_distros()
+        ka = getattr(self.supervisor, "keepalive", None)
+        info = ka.status() if ka is not None else {}
+        for d in distros:
+            d["auto_revive"] = bool(
+                info.get("enabled")
+                and not d["name"].lower().startswith("docker-desktop")
+                and d["name"] not in (info.get("stopped_by_user") or []))
+        return {"ok": True, "distros": distros, "keepalive": info}
+
+    def keepalive_status(self) -> dict[str, Any]:
+        ka = getattr(self.supervisor, "keepalive", None)
+        if ka is None:
+            return {"ok": False, "error": "keepalive no disponible"}
+        return {"ok": True, "keepalive": ka.status()}
 
     MCP_TUNNEL_ID = "mcp-to-vps"
 
@@ -1627,6 +1654,21 @@ class WebPanel:
                 name, op = parts[3], parts[4]
                 self.metrics.record_event("web_distro_" + op, distro=name)
                 return self._distro_action(name, op)
+            if len(parts) == 5 and parts[4] == "keepalive":
+                name = parts[3]
+                ka = getattr(self.supervisor, "keepalive", None)
+                if ka is None:
+                    return {"ok": False, "error": "keepalive no disponible"}
+                if bool(body.get("exempt")):
+                    ka.mark_user_stop(name)
+                    ka.kill_holder(name)
+                    self.metrics.record_event("web_keepalive_exempt",
+                                              distro=name, on=True)
+                else:
+                    ka.protect(name)
+                    self.metrics.record_event("web_keepalive_exempt",
+                                              distro=name, on=False)
+                return {"ok": True, "keepalive": ka.status()}
             if len(parts) == 4 and parts[3] == "start-all":
                 from wsl_port import core
                 self.metrics.record_event("web_distro_start_all")
@@ -1710,6 +1752,19 @@ class WebPanel:
                     getattr(self.supervisor, "_mcp_http", None)
                     and self.supervisor._mcp_http.running)
                 return result
+        if parts[:3] == ["api", "v1", "keepalive"]:
+            ka = getattr(self.supervisor, "keepalive", None)
+            if ka is None:
+                return {"ok": False, "error": "keepalive no disponible"}
+            enabled = bool(body.get("enabled", True))
+            store.cfg.keepalive.enabled = enabled
+            store.save()
+            self.metrics.record_event("web_keepalive_toggle", enabled=enabled)
+            if enabled:
+                ka.kick()
+            else:
+                ka.release_all()
+            return {"ok": True, "keepalive": ka.status()}
         if parts[:3] == ["api", "v1", "maintenance"]:
             if len(parts) == 4 and parts[3] == "on":
                 store.cfg.maintenance.active = True
@@ -1737,17 +1792,33 @@ class WebPanel:
                 return -1, f"timeout tras {timeout}s"
 
         verbs = {"start": "iniciada", "stop": "detenida", "restart": "reiniciada", "delete": "eliminada"}
+        ka = getattr(self.supervisor, "keepalive", None)
         try:
             if op == "start":
+                if ka is not None:
+                    ka.mark_user_start(name)  # boton tacito: volver a proteger
                 rc, err = _run(["wsl.exe", "-d", name, "--", "true"])
             elif op == "stop":
+                # PARADA TACITA POR BOTON: unicas excepciones que el
+                # watchdog keepalive respeta (no revive las paradas aqui).
+                if ka is not None:
+                    ka.mark_user_stop(name)
+                    ka.kill_holder(name)
                 rc, err = _run(["wsl.exe", "--terminate", name], timeout=15)
+                if rc != 0 and ka is not None:
+                    ka.mark_user_start(name)  # no se detuvo: sigue protegida
             elif op == "restart":
+                if ka is not None:
+                    ka.mark_user_start(name)
+                    ka.kill_holder(name)
                 _run(["wsl.exe", "--terminate", name], timeout=15)
                 rc, err = _run(["wsl.exe", "-d", name, "--", "true"])
             elif op == "delete":
                 rc, err = _run(["wsl.exe", "--unregister", name], timeout=60)
                 if rc == 0:
+                    if ka is not None:
+                        ka.kill_holder(name)
+                        ka.mark_user_start(name)  # limpiar exclusiones
                     self.metrics.record_event("web_distro_delete", distro=name)
                     return {"ok": True, "message": f"distro '{name}' eliminada"}
             else:
@@ -1901,6 +1972,9 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .badge-info { background:rgba(33,150,243,.15); color:var(--info); }
   .badge-running { background:rgba(0,200,83,.15); color:var(--ok); }
   .badge-stopped { background:rgba(255,23,68,.15); color:var(--err); }
+  .ka-chip { cursor:pointer; padding:2px 10px; border-radius:20px; font-size:11px; font-weight:600; user-select:none; }
+  .ka-chip.on { background:rgba(0,200,83,.15); color:var(--ok); }
+  .ka-chip.off { background:rgba(158,158,158,.18); color:#9e9e9e; }
   .muted { color:var(--muted); }
   .accent { color:var(--accent); }
   .text-sm { font-size:12px; }
@@ -1990,12 +2064,13 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <button data-cmd="distroActionSel:restart">Reiniciar</button>
     <button class="success outline" data-cmd="startAllDistros">Encender todo</button>
     <button class="danger outline" data-cmd="shutdownAllDistros">Apagar todo WSL</button>
+    <button class="outline" data-cmd="toggleKeepaliveAll" id="ka-all-btn">Auto-revivir: ...</button>
     <button data-cmd="showMetricsSel">Metricas</button>
     <button class="success outline" data-cmd="showCreateDistro">Crear...</button>
     <button class="danger outline" data-cmd="deleteDistroSel">Eliminar</button>
   </div>
   <div class="card">
-    <table><thead><tr><th>Distro</th><th>Estado</th><th>IP</th><th>Version</th></tr></thead><tbody id="distro-body"></tbody></table>
+    <table><thead><tr><th>Distro</th><th>Estado</th><th>IP</th><th>Version</th><th title="Si cae se revive sola (solo el boton Detener la excluye)">Auto-revivir</th></tr></thead><tbody id="distro-body"></tbody></table>
   </div>
   <div class="card"><h2>Exportar / Importar</h2>
     <div class="form"><button data-cmd="exportDistroSel">Exportar seleccionada</button><span class="muted text-sm">Descarga .tar de la distro seleccionada</span></div>
@@ -2164,6 +2239,8 @@ let TOKEN = localStorage.getItem('pf_token') || '';
 // H4: CSP nonce bloquea los onclick inline; se rebindan por delegacion.
 // Solo se invocan funciones globales conocidas con un argumento simple.
 document.addEventListener('click', function(e){
+  const chip = e.target && e.target.closest ? e.target.closest('.ka-chip') : null;
+  if(chip){ kaChipToggle(chip.dataset.ka, chip.classList.contains('off')); return; }
   const el = e.target && e.target.closest ? e.target.closest('[data-cmd]') : null;
   if(!el) return;
   const spec = el.getAttribute('data-cmd') || '';
@@ -2260,19 +2337,24 @@ function showTab(id){ document.querySelectorAll('.tab').forEach(t=>t.classList.r
 (function(){ bindCmdEvents(); const t=localStorage.getItem('wslport-tab'); if(t) showTab(t); })();
 function makeSelectable(tbodyId){ document.getElementById(tbodyId).addEventListener('click', e=>{ const tr=e.target.closest('tr'); if(!tr||!tr.dataset.id) return; tr.parentElement.querySelectorAll('tr').forEach(r=>r.classList.remove('selected')); tr.classList.add('selected'); }); }
 ['distro-body','tun-body','vps-body','fwd-body'].forEach(makeSelectable);
-function renderDistros(list){
+function renderDistros(list, ka){
+  KA=ka||KA||{}; const btn=document.getElementById('ka-all-btn'); if(btn){ const on=KA.enabled!==false; btn.textContent='Auto-revivir: '+(on?'ON':'OFF'); btn.className=on?'success outline':'danger outline'; }
   const b=document.getElementById('distro-body'); b.innerHTML='';
   const sel=document.getElementById('pub-distro'); if(sel){ const cur=sel.value; sel.innerHTML=''; list.forEach(d=>{const o=document.createElement('option');o.value=d.name;o.textContent=d.name;sel.appendChild(o);}); if(cur) sel.value=cur; else if(list[0]) sel.value=list[0].name; }
-  const fSel=document.getElementById('fwd-distro'); if(fSel){ const cur=fSel.value; fSel.innerHTML=''; list.forEach(d=>{const o=document.createElement('option');o.value=d.name;o.textContent=d.name;fSel.appendChild(o);}); if(cur) fSel.value=cur; }
-  const tSel=document.getElementById('term-distro'); if(tSel){ const cur=tSel.value; tSel.innerHTML=''; list.forEach(d=>{const o=document.createElement('option');o.value=d.name;o.textContent=d.name+(d.running?'':' (apagada)');tSel.appendChild(o);}); if(cur&&list.some(d=>d.name===cur)) tSel.value=cur; }
-  if(!list||!list.length){ b.innerHTML='<tr><td colspan=4 class="empty-state">sin distros (WSL no responde)</td></tr>'; return; }
+  const fSel=document.getElementById('fwd-distro'); if(fSel){ const cur=fSel.value; fSel.innerHTML=''; list.forEach(d=>{const o=document.createElement('option');o.value=d.name;o.textContent=d.name;sel.appendChild(o);}); if(cur) sel.value=cur; }
+  const tSel=document.getElementById('term-distro'); if(tSel){ const cur=sel.value; sel.innerHTML=''; list.forEach(d=>{const o=document.createElement('option');o.value=d.name;o.textContent=d.name+(d.running?'':' (apagada)');tSel.appendChild(o);}); if(cur&&list.some(d=>d.name===cur)) tSel.value=cur; }
+  if(!list||!list.length){ b.innerHTML='<tr><td colspan=5 class="empty-state">sin distros (WSL no responde)</td></tr>'; return; }
   for(const d of list){
     const state=d.state==='Running'?'running':'stopped';
+    const docker=d.name.toLowerCase().startsWith('docker-desktop');
+    const chip=docker?'<span style="opacity:.4">n/a</span>':(d.auto_revive?'<span class="ka-chip on" data-ka="'+esc(d.name)+'" title="Protegida: si cae se revive sola. Clic para excluir">ON</span>':'<span class="ka-chip off" data-ka="'+esc(d.name)+'" title="Excluida (apagada por ti): NO se revive. Clic para proteger">OFF</span>');
     const tr=document.createElement('tr'); tr.dataset.id=d.name;
-    tr.innerHTML='<td class="accent">'+esc(d.name)+'</td><td>'+badge(state)+'</td><td>'+esc(d.ip||'-')+'</td><td>'+esc(d.version)+'</td>';
+    tr.innerHTML='<td class="accent">'+esc(d.name)+'</td><td>'+badge(state)+'</td><td>'+esc(d.ip||'-')+'</td><td>'+esc(d.version)+'</td><td>'+chip+'</td>';
     b.appendChild(tr);
   }
 }
+async function kaChipToggle(name, wantAuto){ const r=await api('/api/v1/distro/'+encodeURIComponent(name)+'/keepalive',{method:'POST',headers:{Authorization:'Bearer '+TOKEN,'Content-Type':'application/json'},body:JSON.stringify({exempt:!wantAuto})}); if(r&&r.ok){ toast((wantAuto?'Protegida: ':'Excluida: ')+name+(wantAuto?' (se reavivara si cae)':' (quedara apagada si la detienes)'),'ok'); refresh(); } else toast((r&&r.error)||'error','err'); }
+async function toggleKeepaliveAll(){ const en=!(KA&&KA.enabled!==false); const r=await api('/api/v1/keepalive',{method:'POST',headers:{Authorization:'Bearer '+TOKEN,'Content-Type':'application/json'},body:JSON.stringify({enabled:en})}); if(r&&r.ok){ toast('Auto-revivir global '+(en?'ACTIVADO':'DESACTIVADO'), en?'ok':'warn'); refresh(); } else toast((r&&r.error)||'error','err'); }
 function distroActionSel(op){ const id=document.querySelector('#distro-body tr.selected'); if(!id){ toast('Selecciona una distro','warn'); return; } const name=id.dataset.id; const labels={start:'Iniciando '+name+'...',stop:'Deteniendo '+name+'...',restart:'Reiniciando '+name+'...',delete:'Eliminando '+name+'...'}; post('/api/v1/distro/'+encodeURIComponent(name)+'/'+op, labels[op]||op+' '+name+'...'); }
 async function startAllDistros(){ if(!await showConfirm('Iniciar distros','Iniciar TODAS las distros WSL?')) return; post('/api/v1/distro/start-all', 'Iniciando todas las distros...'); }
 async function shutdownAllDistros(){ if(!await showConfirm('Apagar WSL','Apagar TODAS las distros WSL y detener WSL completamente?')) return; post('/api/v1/distro/shutdown-all', 'Apagando WSL...'); }
@@ -2384,7 +2466,7 @@ function doUnpublish(){
 function tunnelActionSel(op){ const sel=document.querySelector('#tun-body tr.selected'); if(!sel){ toast('Selecciona un tunnel','warn'); return; } const labels={start:'Iniciando tunnel...',stop:'Deteniendo tunnel...',restart:'Reiniciando tunnel...'}; post('/api/v1/tunnels/'+encodeURIComponent(sel.dataset.id)+'/'+op, labels[op]||'Procesando tunnel...'); }
 async function deleteTunnelSel(){ const sel=document.querySelector('#tun-body tr.selected'); if(!sel){ toast('Selecciona un tunnel','warn'); return; } if(!await showConfirm('Eliminar tunnel','Eliminar tunnel '+sel.dataset.id+'?')) return; post('/api/v1/tunnels/'+encodeURIComponent(sel.dataset.id)+'/remove', 'Eliminando tunnel...'); }
 /* ---- Tunnel modal (popup con todas las opciones) ---- */
-let LAST_TUNNELS=[];
+let LAST_TUNNELS=[]; let KA={enabled:true, stopped_by_user:[]};
 function openTunForm(){ tunDialog(null); }
 function openTunEdit(){
   const sel=document.querySelector('#tun-body tr.selected');
@@ -2614,7 +2696,7 @@ function renderAll(data){
   const tunnelsrunning=(s.tunnels||[]).filter(t=>t.state==='running').length;
   document.getElementById('sub').textContent='distros: '+running+'/'+distros.length+' | tunnels: '+tunnelsrunning+'/'+(s.tunnels||[]).length+' | '+new Date().toLocaleTimeString();
   document.getElementById('header-status').textContent=s.wsl_hung?'WSL no responde':('distros '+running+'/'+distros.length+' · tuneles '+tunnelsrunning+'/'+(s.tunnels||[]).length);
-  renderDistros(distros); renderForwards(s.forwards||[]); renderTunnels(s.tunnels||[]); renderAlerts(data.alerts||[]); if(data.vps) renderVps(data.vps);
+  renderDistros(distros, s.keepalive||data.keepalive); renderForwards(s.forwards||[]); renderTunnels(s.tunnels||[]); renderAlerts(data.alerts||[]); if(data.vps) renderVps(data.vps);
 }
 async function refresh(){ try{ const d=await api('/api/v1/state'); if(!d.ok && d.error) throw new Error(d.error); renderAll(d); }catch(e){ if(!e.message.includes('No autorizado') && !e.message.includes('Rate limited')) document.getElementById('sub').textContent='error: '+e.message; } }
 async function refreshEvents(){ try{ const d=await api('/api/v1/events?limit=50'); renderEvents(d.events||[]); }catch(e){} }

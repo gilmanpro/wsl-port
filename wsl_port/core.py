@@ -239,10 +239,21 @@ def distros(skip_ips: bool = False) -> list[dict]:
         return []
 
 
+def keepalive():
+    """Watchdog 'WSL siempre vivo' (nunca se apaga salvo boton tacito)."""
+    try:
+        return supervisor().keepalive
+    except Exception:
+        from wsl_port.vendor.port_forwarder.core.keepalive import (
+            DistroKeepalive)
+        return DistroKeepalive(pf_store(), metrics_pf())
+
+
 def start_distro(name: str) -> dict:
     if not wsl_health_check():
         return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
+        keepalive().mark_user_start(name)  # boton tacito: volver a proteger
         r = wsl_provider().start(name)
         return {"ok": r.ok, "output": r.output, "error": r.error,
                 "message": f"Distro '{name}' iniciada" if r.ok else (r.error or "fallo")}
@@ -254,7 +265,12 @@ def stop_distro(name: str) -> dict:
     if not wsl_health_check():
         return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
+        ka = keepalive()
+        ka.mark_user_stop(name)  # unica via de parada tacita que respeta el watchdog
+        ka.kill_holder(name)
         r = wsl_provider().stop(name)
+        if not r.ok:
+            ka.mark_user_start(name)  # no se detuvo: sigue protegida
         return {"ok": r.ok, "output": r.output, "error": r.error,
                 "message": f"Distro '{name}' detenida" if r.ok else (r.error or "fallo")}
     except Exception as e:
@@ -265,6 +281,7 @@ def restart_distro(name: str) -> dict:
     if not wsl_health_check():
         return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
+        keepalive().mark_user_start(name)
         r = wsl_provider().restart(name)
         return {"ok": r.ok, "output": r.output, "error": r.error,
                 "message": f"Distro '{name}' reiniciada" if r.ok else (r.error or "fallo")}
@@ -276,7 +293,16 @@ def shutdown_all() -> dict:
     if not wsl_health_check():
         return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
+        ka = keepalive()
+        names = [d.name for d in wsl_provider().list_distros()
+                 if not d.name.lower().startswith("docker-desktop")]
+        ka.mark_all_stopped(names)  # boton tacito: apagar TODO sin revivir
         r = wsl_provider().shutdown_all()
+        if r.ok:
+            for n in names:
+                ka.kill_holder(n)
+        else:
+            ka.clear_all_stops()  # no se apago: no dejar exclusiones colgadas
         return {"ok": r.ok, "output": r.output, "error": r.error,
                 "message": "Distros detenidas" if r.ok else (r.error or "fallo")}
     except Exception as e:
@@ -287,6 +313,8 @@ def start_all() -> dict:
     if not wsl_health_check():
         return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
+        ka = keepalive()
+        ka.clear_all_stops()  # boton tacito: volver a proteger todo
         started = []
         failed = []
         for d in wsl_provider().list_distros():
@@ -346,6 +374,10 @@ def delete_distro(name: str) -> dict:
     try:
         from wsl_port.vendor.wsl_manager.utils.subprocess_async import run
         r = run(["wsl.exe", "--unregister", name], timeout=60)
+        if r.ok:
+            ka = keepalive()
+            ka.kill_holder(name)
+            ka.mark_user_start(name)  # limpiar exclusiones de una distro muerta
         return {"ok": r.ok, "output": r.output, "error": r.error}
     except Exception as e:
         return {"ok": False, "error": str(e)}

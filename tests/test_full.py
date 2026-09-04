@@ -35,6 +35,9 @@ def isolated_config(monkeypatch, tmp_path):
     from wsl_port.vendor.port_forwarder.core.config import ConfigStore
     store = ConfigStore(path=str(tmp_path / "config.json"))
     monkeypatch.setattr(core, "_pf_store", store)
+    # el supervisor cachea su store: descartar cualquier instancia con store
+    # live para que keepalive() nunca escriba la config real
+    monkeypatch.setattr(core, "_supervisor", None)
     return store
 
 
@@ -146,7 +149,7 @@ def test_distros_skip_ips(fake_provider, mock_wsl):
     assert ds[0]["ip"] is None
 
 
-def test_start_stop_restart_distro(fake_provider, mock_wsl):
+def test_start_stop_restart_distro(fake_provider, mock_wsl, isolated_config):
     r = core.start_distro("Debian")
     assert r["ok"] is True
     assert ("start", "Debian") in fake_provider.calls
@@ -159,7 +162,7 @@ def test_start_stop_restart_distro(fake_provider, mock_wsl):
     assert r["ok"] is True
 
 
-def test_shutdown_all_ok(fake_provider, mock_wsl):
+def test_shutdown_all_ok(fake_provider, mock_wsl, isolated_config):
     r = core.shutdown_all()
     assert r["ok"] is True
     assert "shutdown_all" in fake_provider.calls
@@ -170,7 +173,8 @@ def test_get_all_ips(fake_provider, mock_wsl):
     assert ips.get("Debian") == "172.26.1.1"
 
 
-def test_create_delete_export_import(fake_provider, mock_wsl, monkeypatch, tmp_path):
+def test_create_delete_export_import(fake_provider, mock_wsl, isolated_config,
+                                      monkeypatch, tmp_path):
     r = core.create_distro("Ubuntu")
     assert r["ok"] is True
     assert ("install", "Ubuntu") in fake_provider.calls

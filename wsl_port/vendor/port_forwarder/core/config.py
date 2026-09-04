@@ -206,6 +206,19 @@ class Maintenance:
 
 
 @dataclass
+class Keepalive:
+    """WSL siempre vivo: las distros nunca se apagan solas.
+
+    - enabled: watchdog activo (revive caidas + sesiones persistentes).
+    - stopped_by_user: distros apagadas EXPLICITAMENTE por boton; son las
+      unicas que el watchdog respeta y no revive.
+    """
+    enabled: bool = True
+    check_interval_seconds: int = 20
+    stopped_by_user: list[str] = field(default_factory=list)
+
+
+@dataclass
 class AppConfig:
     version: int = CONFIG_VERSION
     windows: WindowsCfg = field(default_factory=WindowsCfg)
@@ -221,6 +234,7 @@ class AppConfig:
     on_close: OnClose = field(default_factory=OnClose)
     webhooks: list[Webhook] = field(default_factory=list)
     maintenance: Maintenance = field(default_factory=Maintenance)
+    keepalive: Keepalive = field(default_factory=Keepalive)
 
 
 T = TypeVar("T")
@@ -298,6 +312,7 @@ def parse_config(data: dict[str, Any]) -> AppConfig:
             on_close=_from_dict(OnClose, data.get("on_close") or {}),
             webhooks=[_webhook_from_dict(w) for w in data.get("webhooks") or []],
             maintenance=_from_dict(Maintenance, data.get("maintenance") or {}),
+            keepalive=_from_dict(Keepalive, data.get("keepalive") or {}),
         )
     except (TypeError, ValueError) as e:
         raise ConfigError(f"schema invalido: {e}") from e
