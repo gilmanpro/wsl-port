@@ -99,6 +99,7 @@ class Supervisor:
         self.running = False
         self.maintenance = bool(store.cfg.maintenance.active)
         self._cfg_mtime = self._config_mtime()
+        self._mcp_http = None                        # McpHttpServer (transport http)
 
     # -- arranque / parada -----------------------------------------------------
 
@@ -108,6 +109,7 @@ class Supervisor:
         self.running = True
         self._stop_ev.clear()
         self._sync_web_panel()
+        self._sync_mcp_http()
         self._thread = threading.Thread(
             target=self._loop, name="supervisor", daemon=True
         )
@@ -116,6 +118,12 @@ class Supervisor:
     def stop(self) -> None:
         self.running = False
         self._stop_ev.set()
+        if self._mcp_http is not None:
+            try:
+                self._mcp_http.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self._mcp_http = None
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=self.interval + 5)
 
@@ -178,6 +186,53 @@ class Supervisor:
         except Exception:  # noqa: BLE001 - config invalida: seguir con la anterior
             return
         self._sync_web_panel()
+        self._sync_mcp_http()
+
+    def _sync_mcp_http(self) -> None:
+        """Arranca/para el servidor MCP HTTP segun config (mcp.enabled +
+        transport=http). Escucha solo en 127.0.0.1; la exposicion publica es
+        por el tunnel mcp-to-vps."""
+        import logging
+
+        log = logging.getLogger("port-forwarder.supervisor")
+        cfg = self.store.cfg.mcp
+        desired = bool(cfg.enabled and str(cfg.transport) == "http")
+        srv = self._mcp_http
+        if not desired:
+            if srv is not None:
+                try:
+                    srv.stop()
+                except Exception:  # noqa: BLE001
+                    pass
+                self._mcp_http = None
+            return
+        port = int(cfg.port or 8796)
+        token = cfg.token if cfg.token_required else ""
+        if srv is not None and srv.running and srv.port == port \
+                and srv.bearer == token:
+            return  # ya esta en el puerto/clave deseados
+        if srv is not None:
+            try:
+                srv.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self._mcp_http = None
+        try:
+            from wsl_port.vendor.port_forwarder.api.service import AppService
+            from wsl_port.vendor.port_forwarder.mcp.server import McpHttpServer
+
+            svc = AppService(self.store, supervisor=self)
+            srv = McpHttpServer(service=svc, host="127.0.0.1",
+                                port=port, token=token)
+            srv.start()
+            self._mcp_http = srv
+            self.metrics.record_event("mcp_http_started", port=port,
+                                      token_required=bool(cfg.token_required))
+            log.info("MCP HTTP listo en 127.0.0.1:%s", port)
+        except Exception as e:  # noqa: BLE001 - puerto ocupado, etc.
+            log.error("MCP HTTP no arranco: %s", e)
+            self.metrics.record_alert(
+                "mcp_http", f"MCP HTTP no arranco: {e}", severity="warning")
 
     def _web_panel_token(self) -> str:
         """Token del panel web: primero SecretsStore (DPAPI), fallback a config."""

@@ -187,7 +187,11 @@ class WslTerminal:
         self._thread = threading.Thread(
             target=self._reader, name=f"wsl-term-{self.distro}", daemon=True)
         self._thread.start()
-        self._write(f"PS1=''; PS2=''; echo __WSPORT_{self._nonce}_READY__")
+        # wsl.exe hereda el cwd de Windows; forzar el home de la distro
+        # (cd "$HOME"; si no existe, raiz /) antes de dar la terminal por lista.
+        # El READY incluye el pwd final para mostrarlo en la UI.
+        self._write(f'cd "$HOME" 2>/dev/null || cd /; '
+                    f'PS1=""; PS2=""; echo __WSPORT_{self._nonce}_READY__$(pwd)')
         return None
 
     def stop(self) -> None:
@@ -245,8 +249,10 @@ class WslTerminal:
                     if prefix_ready in line:
                         ready_sent = True
                         self.ready = True
+                        idx_r = line.find(prefix_ready)
+                        cwd = line[idx_r + len(prefix_ready):].strip()
                         self._send({"type": "term_status", "state": "running",
-                                    "distro": self.distro})
+                                    "distro": self.distro, "cwd": cwd})
                     continue
                 idx = line.find(prefix_exit)
                 if idx != -1:
@@ -696,8 +702,11 @@ class PanelHandler(BaseHTTPRequestHandler):
                     {"id": v.id, "host": v.host, "user": v.user, "port": v.port}
                     for v in store.cfg.vps_list
                 ]
+                mcp_http = getattr(self.panel.supervisor, "_mcp_http", None)
                 response = {
                     "ok": True,
+                    "http_running": bool(mcp_http and mcp_http.running),
+                    "http_port": mcp_http.port if mcp_http else None,
                     "settings": {
                         "enabled": cfg.enabled,
                         "transport": cfg.transport,
@@ -1597,6 +1606,11 @@ class WebPanel:
                     # Actualizar la configuración
                     store.cfg.mcp = new_cfg
                     store.save()
+                    # arrancar/parar el servidor MCP HTTP al instante
+                    try:
+                        self.supervisor._sync_mcp_http()
+                    except Exception as e:  # noqa: BLE001
+                        log.warning("sync mcp http tras guardado fallo: %s", e)
                     if generated_token:
                         return {"ok": True, "message": "Configuración MCP guardada",
                                 "token": new_cfg.token,
@@ -1660,7 +1674,15 @@ class WebPanel:
                             store.cfg.tunnels = [t for t in store.cfg.tunnels if t.id != mcp_tunnel_id]
                             store.save()
                     
-                    return {"ok": True, "message": "Configuración MCP aplicada"}
+                    # asegurar que el servidor MCP HTTP este segun config
+                    try:
+                        self.supervisor._sync_mcp_http()
+                    except Exception as e:  # noqa: BLE001
+                        log.warning("sync mcp http tras apply fallo: %s", e)
+                    return {"ok": True, "message": "Configuración MCP aplicada",
+                            "mcp_http_running": bool(
+                                getattr(self.supervisor, "_mcp_http", None)
+                                and self.supervisor._mcp_http.running)}
                 except Exception as e:
                     return {"ok": False, "error": f"Error aplicando configuración MCP: {str(e)}"}
         if parts[:3] == ["api", "v1", "maintenance"]:
@@ -2060,6 +2082,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <div id="tab-ajustes" class="tab-content">
   <div class="card">
     <h2>Ajustes MCP</h2>
+    <div id="mcp-status" class="text-sm" style="margin:2px 0 10px;"></div>
     <div class="form">
       <div class="row">
         <label><input type="checkbox" id="mcp-enabled"> Habilitar MCP</label>
@@ -2588,15 +2611,26 @@ function connectWS(){
       else if(msg.type==='term_out'){ termOut(msg.data||''); }
       else if(msg.type==='term_exit'){ termOut('[exit '+msg.code+']\n'); }
       else if(msg.type==='term_status'){
-        if(msg.state==='running'){ termSetState('terminal: '+(msg.distro||''), true); termOut('$ terminal lista\n'); }
+        if(msg.state==='running'){ termSetState('terminal: '+(msg.distro||'')+(msg.cwd?' · '+msg.cwd:''), true); termOut('$ terminal lista en '+(msg.cwd||'/')+'\n'); }
         else { termSetState(msg.state==='error'?'error':'cerrada', false); if(msg.message) termOut('! '+msg.message+'\n'); }
       }
     }catch(err){}
   };
 }
+function renderMcpStatus(data){
+  const st=document.getElementById('mcp-status'); if(!st) return;
+  if (data.http_running) {
+    st.innerHTML='<span style="color:var(--ok)">● Servidor MCP HTTP corriendo en 127.0.0.1:'+esc(String(data.http_port))+'/mcp</span>';
+  } else if (data.settings && data.settings.enabled && (data.settings.transport||'stdio')==='http') {
+    st.innerHTML='<span style="color:var(--err)">● MCP habilitado pero el servidor NO esta corriendo — pulsa "Aplicar Configuracion" o revisa que el puerto este libre</span>';
+  } else {
+    st.innerHTML='<span class="muted">● Servidor MCP detenido</span>';
+  }
+}
 function loadMcpSettings() {
   api('/api/v1/mcp/settings').then(data => {
     if (data.ok) {
+      renderMcpStatus(data);
       document.getElementById('mcp-enabled').checked = data.settings.enabled;
       document.getElementById('mcp-transport').value = data.settings.transport || 'stdio';
       document.getElementById('mcp-port').value = data.settings.port || 8796;
@@ -2649,6 +2683,7 @@ function saveMcpSettings() {
       toast('Error: ' + (d.error || 'guardando configuración'), 'err');
       activity('Error: ' + (d.error || 'guardando configuración'), 'error');
     }
+    setTimeout(loadMcpSettings, 700);
   }).catch(e => {
     toast('Error guardando configuración: ' + e.message, 'err');
     activity('Error guardando configuración: ' + e.message, 'error');
@@ -2659,13 +2694,14 @@ function applyMcpSettings() {
   activity('Aplicando...','info');
   api('/api/v1/mcp/apply',{method:'POST'}).then(d=>{
     if (d.ok) {
-      toast('Configuración MCP aplicada', 'ok');
+      toast('Configuración MCP aplicada' + (d.mcp_http_running===false?' (servidor HTTP no corre)':''), 'ok');
       activity('Configuración MCP aplicada', 'success');
     } else {
       toast('Error: ' + (d.error || 'aplicando configuración'), 'err');
       activity('Error: ' + (d.error || 'aplicando configuración'), 'error');
     }
     refresh();
+    setTimeout(loadMcpSettings, 1200);
   }).catch(e => {
     toast('Error aplicando configuración: ' + e.message, 'err');
     activity('Error aplicando configuración: ' + e.message, 'error');

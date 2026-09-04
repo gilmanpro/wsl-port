@@ -220,6 +220,9 @@ def test_ws_terminal_roundtrip(panel):
         st = ws.wait_for(lambda m: m.get("type") == "term_status"
                          and m.get("state") == "running", timeout=60)
         assert st["distro"] == distro
+        # la terminal debe abrir en el home de la distro, no en /mnt/c/...
+        assert (st.get("cwd") or "").startswith("/")
+        assert not (st.get("cwd") or "").lower().startswith("/mnt/c")
         ws.send_json({"type": "term_cmd", "cmd": "echo hola-terminal-test"})
         ws.wait_for(lambda m: m.get("type") == "term_out"
                     and "hola-terminal-test" in (m.get("data") or ""),
@@ -412,3 +415,75 @@ def test_panel_diag_and_log_endpoints(panel, isolated_config, monkeypatch):
         l = json.loads(resp.read())
     assert l["ok"] is True
     assert "log" in l
+
+
+# ------------------------------------------------- MCP transporte HTTP (8796)
+
+
+def _mcp_http_post(url, obj, token=None, timeout=10):
+    data = json.dumps(obj).encode('utf-8')
+    req = urllib.request.Request(url, data=data, method='POST')
+    req.add_header('Content-Type', 'application/json')
+    if token:
+        req.add_header('Authorization', f'Bearer {token}')
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+
+
+def test_mcp_http_transport_auth_and_tools(isolated_config):
+    from wsl_port.vendor.port_forwarder.api.service import AppService
+    from wsl_port.vendor.port_forwarder.mcp.server import McpHttpServer
+    svc = AppService(isolated_config)
+    srv = McpHttpServer(service=svc, host='127.0.0.1', port=0, token='tok123')
+    srv.start()
+    try:
+        url = f'http://127.0.0.1:{srv.port}/mcp'
+        # sin token -> 401
+        code, _ = _mcp_http_post(url, {'jsonrpc': '2.0', 'id': 1,
+                                       'method': 'tools/list'})
+        assert code == 401
+        # con token -> lista de tools incluye las de terminal WSL
+        code, resp = _mcp_http_post(url, {'jsonrpc': '2.0', 'id': 1,
+                                          'method': 'tools/list'}, token='tok123')
+        assert code == 200
+        names = [t['name'] for t in resp['result']['tools']]
+        assert 'wsl_exec' in names and 'wsl_distros' in names
+        # initialize handshake
+        code, resp = _mcp_http_post(url, {'jsonrpc': '2.0', 'id': 2,
+                                          'method': 'initialize',
+                                          'params': {}}, token='tok123')
+        assert code == 200 and 'protocolVersion' in resp['result']
+        # health publico sin auth
+        with urllib.request.urlopen(f'http://127.0.0.1:{srv.port}/health',
+                                    timeout=10) as r:
+            h = json.loads(r.read())
+        assert h['ok'] is True and h['tools'] >= 30
+    finally:
+        srv.stop()
+
+
+def test_supervisor_autostarts_mcp_http(isolated_config):
+    from wsl_port.vendor.port_forwarder.core.supervisor import Supervisor
+    sup = Supervisor(isolated_config)
+    mcp = isolated_config.cfg.mcp
+    mcp.enabled = True
+    mcp.transport = 'http'
+    mcp.port = 0          # efimero en tests
+    mcp.token_required = False
+    mcp.token = ''
+    try:
+        sup._sync_mcp_http()
+        assert sup._mcp_http is not None and sup._mcp_http.running
+        with urllib.request.urlopen(
+                f'http://127.0.0.1:{sup._mcp_http.port}/health', timeout=10) as r:
+            assert json.loads(r.read())['ok'] is True
+        # deshabilitar -> se detiene solo
+        mcp.enabled = False
+        sup._sync_mcp_http()
+        assert sup._mcp_http is None
+    finally:
+        if sup._mcp_http is not None:
+            sup._mcp_http.stop()

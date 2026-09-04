@@ -355,3 +355,112 @@ class McpServer:
         results.append({"step": "tool desconocida", "ok": r is not None
                         and "error" in r})
         return results
+
+
+class McpHttpServer:
+    """Transporte HTTP del MCP: JSON-RPC 2.0 por POST /mcp.
+
+    Lo arranca el supervisor cuando mcp.enabled=true y mcp.transport=http
+    (Ajustes del panel/GUI). Autenticacion: si hay token, todo POST exige
+    'Authorization: Bearer <token>'. Solo escucha en 127.0.0.1; la salida a
+    Internet es por el tunnel mcp-to-vps (local 8796 -> VPS:55872).
+    """
+
+    def __init__(self, service: "AppService | None" = None,
+                 host: str = "127.0.0.1", port: int = 8796,
+                 token: str = "") -> None:
+        self.mcp = McpServer(service, token="")  # el bearer se valida en el borde
+        self.bearer = token or ""
+        self.host = host
+        self.port = port
+        self.running = False
+        self._httpd = None
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        from http.server import BaseHTTPRequestHandler
+
+        from wsl_port.vendor.port_forwarder.utils.http_server import (
+            BoundedThreadingHTTPServer,
+        )
+
+        outer = self
+
+        class _Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, fmt, *args):  # silenciar access log
+                log.debug("mcp-http " + fmt, *args)
+
+            def _send(self, code: int, obj: dict) -> None:
+                body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+
+            def _authed(self) -> bool:
+                if not outer.bearer:
+                    return True
+                return self.headers.get("Authorization", "") == f"Bearer {outer.bearer}"
+
+            def do_GET(self) -> None:
+                path = self.path.split("?", 1)[0]
+                if path in ("/health", "/mcp/health"):
+                    self._send(200, {"ok": True, "server": "port-forwarder-mcp",
+                                     "tools": len(outer.mcp.tools)})
+                    return
+                self._send(404, {"error": "usa POST /mcp"})
+
+            def do_POST(self) -> None:
+                path = self.path.split("?", 1)[0]
+                if path not in ("/mcp", "/mcp/", "/"):
+                    self._send(404, {"error": "endpoint: POST /mcp"})
+                    return
+                if not self._authed():
+                    self._send(401, {"error": "token invalido "
+                                  "(Authorization: Bearer <token>)"})
+                    return
+                try:
+                    length = int(self.headers.get("Content-Length") or 0)
+                    if length <= 0 or length > 4 * 1024 * 1024:
+                        self._send(400, {"error": "body requerido (max 4MB)"})
+                        return
+                    msg = json.loads(self.rfile.read(length).decode("utf-8"))
+                except (ValueError, UnicodeDecodeError):
+                    self._send(400, {"error": "JSON invalido"})
+                    return
+                try:
+                    resp = outer.mcp.handle(msg)
+                except Exception as e:  # noqa: BLE001
+                    log.exception("mcp-http handle fallo")
+                    self._send(500, {"error": str(e)})
+                    return
+                if resp is None:  # notificacion: ACK vacio
+                    self._send(200, {"ok": True})
+                    return
+                self._send(200, resp)
+
+        self._httpd = BoundedThreadingHTTPServer((self.host, self.port), _Handler)
+        if self.port == 0:
+            self.port = self._httpd.server_address[1]
+        self.running = True
+        self._thread = threading.Thread(
+            target=self._httpd.serve_forever, name="mcp-http", daemon=True)
+        self._thread.start()
+        log.info("MCP HTTP en http://%s:%s/mcp (token %s)",
+                 self.host, self.port,
+                 "requerido" if self.bearer else "no configurado")
+
+    def stop(self) -> None:
+        self.running = False
+        if self._httpd is not None:
+            self._httpd.shutdown()
+            self._httpd.server_close()
+            self._httpd = None
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=5)
+        log.info("MCP HTTP detenido")
