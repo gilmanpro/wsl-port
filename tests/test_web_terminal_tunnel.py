@@ -487,3 +487,63 @@ def test_supervisor_autostarts_mcp_http(isolated_config):
     finally:
         if sup._mcp_http is not None:
             sup._mcp_http.stop()
+
+
+# --------------------------- sincronizacion Ajustes MCP <-> tunel mcp-to-vps
+
+
+def test_mcp_settings_syncs_tunnel(panel, isolated_config, monkeypatch):
+    _, base = panel
+    p = panel[0]
+    from wsl_port.vendor.port_forwarder.core.config import Vps
+    p.supervisor.store.add_vps(Vps(id="vps-canada", host="1.2.3.4", user="root"))
+    started, stopped = [], []
+    monkeypatch.setattr(type(p.supervisor.ssh), "start",
+        lambda self, t, v=None: started.append(
+            (t.local_bind.port, t.remote_binds[0].port, t.vps_id)))
+    monkeypatch.setattr(type(p.supervisor.ssh), "stop",
+        lambda self, t: stopped.append(t.id))
+    monkeypatch.setattr(type(p.supervisor.ssh), "is_alive", lambda self, t: False)
+    monkeypatch.setattr(type(p.supervisor), "_sync_mcp_http", lambda self: None)
+
+    def settings(**over):
+        body = {"enabled": True, "transport": "http", "port": 8796,
+                "token_required": True, "token": "tok",
+                "vps_export_enabled": True,
+                "vps_target_host": "vps-canada",
+                "vps_target_port": 55872}
+        body.update(over)
+        return _http_post(base + "/api/v1/mcp/settings", body)
+
+    r = settings()
+    assert r["ok"], r
+    t = isolated_config.get_tunnel("mcp-to-vps")
+    assert t is not None
+    assert t.local_bind.port == 8796 and t.remote_binds[0].port == 55872
+    assert t.vps_id == "vps-canada" and t.auto_start and t.health_gate.enabled
+    assert started[-1] == (8796, 55872, "vps-canada")
+
+    # cambiar puerto MCP -> el tunel se actualiza y se detiene el proceso viejo
+    r = settings(port=9999)
+    assert r["ok"], r
+    t = isolated_config.get_tunnel("mcp-to-vps")
+    assert t.local_bind.port == 9999
+    assert "mcp-to-vps" in stopped
+    assert started[-1] == (9999, 55872, "vps-canada")
+
+    # 'Aplicar' no duplica ni reinicia si ya esta igual y vivo
+    monkeypatch.setattr(type(p.supervisor.ssh), "is_alive", lambda self, t: True)
+    before_start = len(started)
+    r = _http_post(base + "/api/v1/mcp/apply", {})
+    assert r["ok"] and r["tunnel"] == "mcp-to-vps"
+    assert len(started) == before_start
+
+    # desactivar export -> tunel detenido y eliminado
+    r = settings(vps_export_enabled=False)
+    assert r["ok"], r
+    assert isolated_config.get_tunnel("mcp-to-vps") is None
+    assert stopped.count("mcp-to-vps") >= 2
+
+    # VPS inexistente -> error claro, no rompe nada
+    r = settings(vps_export_enabled=True, vps_target_host="no-existe")
+    assert r["ok"] is False and "no existe" in (r.get("error") or "")
