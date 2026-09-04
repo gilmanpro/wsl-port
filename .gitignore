@@ -98,3 +98,6 @@ htmlcov/
 
 # Metrics database (auto-generated)
 metrics.db
+
+# Informe de auditoria local (contiene IPs/credenciales): no subir
+security/
