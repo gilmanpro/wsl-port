@@ -1263,6 +1263,84 @@ class WebPanel:
         """Lista distros WSL via wsl.exe -l -v (timeout corto, no cuelga)."""
         return {"ok": True, "distros": self._get_wsl_distros()}
 
+    MCP_TUNNEL_ID = "mcp-to-vps"
+
+    def _sync_mcp_export(self) -> dict[str, Any]:
+        """Mantiene el tunel mcp-to-vps sincronizado con cfg.mcp.
+
+        Con export activado: el tunel debe apuntar EXACTAMENTE
+        127.0.0.1:<puerto MCP> -> <vps destino>:<puerto VPS>; si algo cambio
+        (puerto, VPS, destino) se detiene el proceso ssh viejo, se reemplaza
+        la config y se arranca. Con export desactivado: se detiene y elimina.
+        Idempotente: si ya esta igual y vivo, no hace nada.
+        """
+        store = self.supervisor.store
+        cfg = store.cfg.mcp
+        try:
+            existing = store.get_tunnel(self.MCP_TUNNEL_ID)
+            if not (cfg.vps_export_enabled and cfg.vps_target_host):
+                if existing is not None:
+                    try:
+                        self.supervisor.ssh.stop(existing)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    store.cfg.tunnels = [
+                        t for t in store.cfg.tunnels
+                        if t.id != self.MCP_TUNNEL_ID]
+                    store.save()
+                    self.metrics.record_event("web_mcp_export_off")
+                return {"ok": True, "message": "Configuración MCP aplicada",
+                        "tunnel": ("eliminado" if existing
+                                   else "sin export")}
+            vps = store.get_vps(cfg.vps_target_host)
+            if not vps:
+                return {"ok": False,
+                        "error": f"VPS '{cfg.vps_target_host}' no existe"}
+            changed = (existing is None
+                       or existing.vps_id != cfg.vps_target_host
+                       or existing.local_bind.port != cfg.port
+                       or [b.port for b in existing.remote_binds]
+                       != [cfg.vps_target_port])
+            if existing is not None and changed:
+                try:
+                    self.supervisor.ssh.stop(existing)
+                except Exception:  # noqa: BLE001
+                    pass
+                store.cfg.tunnels = [t for t in store.cfg.tunnels
+                                     if t.id != self.MCP_TUNNEL_ID]
+            tun = Tunnel(
+                id=self.MCP_TUNNEL_ID, type="ssh", enabled=True,
+                vps_id=cfg.vps_target_host,
+                local_bind=Bind(host="127.0.0.1", port=cfg.port),
+                remote_binds=[Bind(host="0.0.0.0", port=cfg.vps_target_port)],
+                auto_start=True, health_gate=TunnelHealthGate(enabled=True),
+            )
+            if existing is None or changed:
+                store.cfg.tunnels.append(tun)
+                store.save()
+            warning = ""
+            if changed or not self.supervisor.ssh.is_alive(tun):
+                try:
+                    self.supervisor.ssh.start(tun, vps)
+                    if changed:
+                        self.metrics.record_event(
+                            "web_mcp_export_apply", vps=vps.id,
+                            local_port=cfg.port,
+                            remote_port=cfg.vps_target_port)
+                except Exception as e:  # el supervisor reintenta solo
+                    warning = f"tunnel no arranco: {e}"
+            r: dict[str, Any] = {"ok": True,
+                                 "message": "Configuración MCP aplicada",
+                                 "tunnel": self.MCP_TUNNEL_ID,
+                                 "local": f"127.0.0.1:{cfg.port}",
+                                 "public": f"{vps.host}:{cfg.vps_target_port}"}
+            if warning:
+                r["warning"] = warning
+            return r
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False,
+                    "error": f"Error aplicando configuración MCP: {str(e)}"}
+
     def tunnel_log(self, tunnel_id: str) -> dict[str, Any]:
         """Tail del log ssh/autossh del tunnel (diagnostico de fallos)."""
         store = self.supervisor.store
@@ -1611,80 +1689,27 @@ class WebPanel:
                         self.supervisor._sync_mcp_http()
                     except Exception as e:  # noqa: BLE001
                         log.warning("sync mcp http tras guardado fallo: %s", e)
+                    # y mantener el tunel mcp-to-vps coherente con la config
+                    exp = self._sync_mcp_export()
                     if generated_token:
                         return {"ok": True, "message": "Configuración MCP guardada",
                                 "token": new_cfg.token,
+                                "export": exp,
                                 "warning": "Token MCP autogenerado (exposición al VPS exige token)"}
-                    return {"ok": True, "message": "Configuración MCP guardada"}
+                    return {"ok": True, "message": "Configuración MCP guardada",
+                            "export": exp}
                 except Exception as e:
                     return {"ok": False, "error": f"Error guardando configuración MCP: {str(e)}"}
             if len(parts) == 4 and parts[3] == "apply":
-                # Aplicar la configuración MCP (esto podría reiniciar el servidor MCP si es necesario)
+                result = self._sync_mcp_export()
                 try:
-                    cfg = store.cfg.mcp
-                    # Si la exportación MCP al VPS está habilitada, crear/actualizar el túnel correspondiente
-                    if cfg.vps_export_enabled and cfg.vps_target_host:
-                        # Buscar si ya existe un túnel MCP
-                        mcp_tunnel_id = "mcp-to-vps"
-                        existing_tunnel = store.get_tunnel(mcp_tunnel_id)
-                        
-                        target_vps = store.get_vps(cfg.vps_target_host)
-                        if not target_vps:
-                            return {"ok": False, "error": f"VPS '{cfg.vps_target_host}' no existe"}
-                        
-                        # Crear o actualizar el túnel MCP
-                        # (Tunnel/Bind/TunnelHealthGate ya estan importados
-                        # a nivel de modulo; un import local aqui romperia
-                        # 'tunnels/add' con UnboundLocalError)
-                        mcp_tunnel = Tunnel(
-                            id=mcp_tunnel_id,
-                            type="ssh",
-                            enabled=True,
-                            vps_id=cfg.vps_target_host,
-                            local_bind=Bind(host="127.0.0.1", port=cfg.port),  # Puerto local MCP
-                            remote_binds=[Bind(host="0.0.0.0", port=cfg.vps_target_port)],  # Puerto en el VPS
-                            auto_start=True,
-                            health_gate=TunnelHealthGate(enabled=True)
-                        )
-                        
-                        if existing_tunnel:
-                            # Actualizar el túnel existente
-                            store.cfg.tunnels = [t for t in store.cfg.tunnels if t.id != mcp_tunnel_id]
-                        
-                        store.cfg.tunnels.append(mcp_tunnel)
-                        store.save()
-                        
-                        # Intentar iniciar el túnel si es posible
-                        try:
-                            self.supervisor.ssh.start(mcp_tunnel, target_vps)
-                        except Exception as start_err:
-                            # Si falla el inicio, registrar pero no impedir la operación
-                            print(f"Advertencia: No se pudo iniciar el túnel MCP: {start_err}")
-                    
-                    # Si la exportación está deshabilitada pero existe un túnel, eliminarlo
-                    else:
-                        mcp_tunnel_id = "mcp-to-vps"
-                        existing_tunnel = store.get_tunnel(mcp_tunnel_id)
-                        if existing_tunnel:
-                            try:
-                                self.supervisor.ssh.stop(existing_tunnel)
-                            except:
-                                pass  # Ignorar errores al detener
-                            
-                            store.cfg.tunnels = [t for t in store.cfg.tunnels if t.id != mcp_tunnel_id]
-                            store.save()
-                    
-                    # asegurar que el servidor MCP HTTP este segun config
-                    try:
-                        self.supervisor._sync_mcp_http()
-                    except Exception as e:  # noqa: BLE001
-                        log.warning("sync mcp http tras apply fallo: %s", e)
-                    return {"ok": True, "message": "Configuración MCP aplicada",
-                            "mcp_http_running": bool(
-                                getattr(self.supervisor, "_mcp_http", None)
-                                and self.supervisor._mcp_http.running)}
-                except Exception as e:
-                    return {"ok": False, "error": f"Error aplicando configuración MCP: {str(e)}"}
+                    self.supervisor._sync_mcp_http()
+                except Exception as e:  # noqa: BLE001
+                    log.warning("sync mcp http tras apply fallo: %s", e)
+                result["mcp_http_running"] = bool(
+                    getattr(self.supervisor, "_mcp_http", None)
+                    and self.supervisor._mcp_http.running)
+                return result
         if parts[:3] == ["api", "v1", "maintenance"]:
             if len(parts) == 4 and parts[3] == "on":
                 store.cfg.maintenance.active = True
@@ -2677,13 +2702,17 @@ function saveMcpSettings() {
   activity('Guardando...','info');
   api('/api/v1/mcp/settings',{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(settings)}).then(d=>{
     if (d.ok) {
-      toast('Configuración MCP guardada', 'ok');
-      activity('Configuración MCP guardada', 'success');
+      let msg = 'Configuración MCP guardada';
+      if (d.export && d.export.public) msg += ' · túnel → ' + d.export.public;
+      toast(msg, 'ok');
+      activity(msg, 'success');
+      if (d.export && d.export.warning) { toast(d.export.warning, 'warn'); activity(d.export.warning, 'warning'); }
     } else {
       toast('Error: ' + (d.error || 'guardando configuración'), 'err');
       activity('Error: ' + (d.error || 'guardando configuración'), 'error');
     }
     setTimeout(loadMcpSettings, 700);
+    setTimeout(refresh, 2500);
   }).catch(e => {
     toast('Error guardando configuración: ' + e.message, 'err');
     activity('Error guardando configuración: ' + e.message, 'error');
@@ -2694,8 +2723,11 @@ function applyMcpSettings() {
   activity('Aplicando...','info');
   api('/api/v1/mcp/apply',{method:'POST'}).then(d=>{
     if (d.ok) {
-      toast('Configuración MCP aplicada' + (d.mcp_http_running===false?' (servidor HTTP no corre)':''), 'ok');
-      activity('Configuración MCP aplicada', 'success');
+      let msg = 'Configuración MCP aplicada';
+      if (d.mcp_http_running===false) msg += ' (servidor HTTP no corre)';
+      if (d.public) msg += ' · público: ' + d.public;
+      toast(msg + (d.warning? ' · '+d.warning : ''), d.warning?'warn':'ok');
+      activity(msg, d.warning?'warning':'success');
     } else {
       toast('Error: ' + (d.error || 'aplicando configuración'), 'err');
       activity('Error: ' + (d.error || 'aplicando configuración'), 'error');

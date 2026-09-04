@@ -187,6 +187,13 @@ class Supervisor:
             return
         self._sync_web_panel()
         self._sync_mcp_http()
+        # el panel (si corre en este proceso) mantiene el tunel mcp-to-vps
+        web = getattr(self, "_web", None)
+        if web is not None:
+            try:
+                web._sync_mcp_export()
+            except Exception:  # noqa: BLE001
+                pass
 
     def _sync_mcp_http(self) -> None:
         """Arranca/para el servidor MCP HTTP segun config (mcp.enabled +
