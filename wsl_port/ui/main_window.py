@@ -217,9 +217,12 @@ class MainWindow:
         # Toast de Windows (opcional, en thread aparte)
         try:
             def _toast():
-                from winotify import Notification
-                Notification(app_id="wsl-port", title=title,
-                             msg=message).show()
+                try:
+                    from winotify import Notification
+                    Notification(app_id="wsl-port", title=title,
+                                 msg=message).show()
+                except Exception:
+                    pass  # winotify no esta instalado: el banner in-app cubre
             threading.Thread(target=_toast, daemon=True).start()
         except Exception:
             print(f"[{level.upper()}] {title}: {message}")

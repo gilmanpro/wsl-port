@@ -2,7 +2,9 @@
 
 Endpoints:
   GET  /                      -> dashboard HTML (estilo GUI)
-  GET  /ws                    -> WebSocket para actualizaciones en tiempo real
+  GET  /ws                    -> WebSocket: estado en tiempo real + terminal WSL
+     cliente -> {type: term_start|term_cmd|term_stop, distro?, cmd?}
+     servidor -> {type: term_status|term_out|term_exit, ...}
   GET  /api/v1/state          -> estado completo (supervisor + metricas)
   GET  /api/v1/events         -> journal reciente (SQLite)
   GET  /api/v1/alerts         -> alertas abiertas/recientes
@@ -114,6 +116,156 @@ class RateLimiter:
 def _json(data: Any) -> tuple[bytes, int]:
     body = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
     return body, 200
+
+
+# -- WebSocket: lock global de envio (evita entrelazar frames de hilos) ----
+
+_WS_SEND_MU = threading.Lock()
+
+CREATE_NO_WINDOW = 0x08000000
+
+
+def _decode_wsl_bytes(data: bytes) -> str:
+    """Decodifica salida cruda de wsl.exe/bash (UTF-8 o UTF-16-LE)."""
+    if not data:
+        return ""
+    if data.startswith(b"\xff\xfe") or data.startswith(b"\xfe\xff"):
+        try:
+            return data.decode("utf-16")
+        except (UnicodeDecodeError, UnicodeError):
+            pass
+    try:
+        s = data.decode("utf-8")
+        if "\x00" in s:
+            return data.decode("utf-16-le", errors="replace")
+        return s
+    except UnicodeDecodeError:
+        return data.decode("utf-16-le", errors="replace")
+
+
+class WslTerminal:
+    """Sesion de terminal WSL sobre WebSocket.
+
+    Mantiene un `bash -i` persistente por conexion (wsl.exe -d <distro>).
+    Cada comando se ejecuta seguido de un sentinel `echo __WSPORT_<n>_EXIT_$?__`
+    para delimitar la salida y reportar el codigo de salida. No usa PTY (no hay
+    ConPTY en stdlib): programas interactivos a pantalla completa (vim, top)
+    no funcionan, pero el resto de la shell si (cd, env, pipes, history).
+    """
+
+    _nonce_seq = 0
+    _nonce_mu = threading.Lock()
+
+    def __init__(self, distro: str, send: Any) -> None:
+        self.distro = distro
+        self._send = send  # callable(dict) -> envia JSON al cliente
+        with WslTerminal._nonce_mu:
+            WslTerminal._nonce_seq += 1
+            self._nonce = f"{WslTerminal._nonce_seq:04x}{int(time.time()) % 0xFFFF:x}"
+        self.proc = None
+        self._thread: threading.Thread | None = None
+        self._lock = threading.Lock()
+        self.dead = False
+        self.ready = False
+
+    # -- ciclo de vida ------------------------------------------------------
+
+    def start(self) -> str | None:
+        """Arranca bash en la distro. Devuelve error o None si OK."""
+        import subprocess
+        if self.proc is not None:
+            return None
+        try:
+            self.proc = subprocess.Popen(
+                ["wsl.exe", "-d", self.distro, "--",
+                 "bash", "--noediting", "--norc", "--noprofile", "-i"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, creationflags=CREATE_NO_WINDOW,
+            )
+        except Exception as e:
+            return f"no se pudo abrir terminal en '{self.distro}': {e}"
+        self._thread = threading.Thread(
+            target=self._reader, name=f"wsl-term-{self.distro}", daemon=True)
+        self._thread.start()
+        self._write(f"PS1=''; PS2=''; echo __WSPORT_{self._nonce}_READY__")
+        return None
+
+    def stop(self) -> None:
+        if self.proc is None:
+            self.dead = True
+            return
+        self.dead = True
+        try:
+            import subprocess
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(self.proc.pid)],
+                capture_output=True, timeout=5,
+                creationflags=CREATE_NO_WINDOW,
+            )
+        except Exception:
+            try:
+                self.proc.kill()
+            except Exception:
+                pass
+
+    # -- E/S ------------------------------------------------------------------
+
+    def _write(self, line: str) -> bool:
+        if self.proc is None or self.dead:
+            return False
+        try:
+            with self._lock:
+                self.proc.stdin.write((line + "\n").encode("utf-8"))
+                self.proc.stdin.flush()
+            return True
+        except Exception:
+            self.dead = True
+            return False
+
+    def submit(self, cmd: str) -> None:
+        """Envia una linea de comando + sentinel de terminacion."""
+        if self.dead:
+            self._send({"type": "term_status", "state": "closed",
+                        "message": "terminal cerrada, vuelve a abrirla"})
+            return
+        for part in str(cmd).split("\n"):
+            if not self._write(part):
+                break
+            if part.strip() != "":
+                self._write(f"echo __WSPORT_{self._nonce}_EXIT_$?__")
+
+    def _reader(self) -> None:
+        ready_sent = False
+        prefix_exit = f"__WSPORT_{self._nonce}_EXIT_"
+        prefix_ready = f"__WSPORT_{self._nonce}_READY__"
+        try:
+            for raw in self.proc.stdout:
+                line = _decode_wsl_bytes(raw)
+                if not ready_sent:
+                    if prefix_ready in line:
+                        ready_sent = True
+                        self.ready = True
+                        self._send({"type": "term_status", "state": "running",
+                                    "distro": self.distro})
+                    continue
+                idx = line.find(prefix_exit)
+                if idx != -1:
+                    if idx > 0:
+                        self._send({"type": "term_out",
+                                    "data": line[:idx] + "\n"})
+                    code = line[idx + len(prefix_exit):].strip()
+                    try:
+                        code_n = int(code.split("_")[0])
+                    except ValueError:
+                        code_n = -1
+                    self._send({"type": "term_exit", "code": code_n})
+                else:
+                    self._send({"type": "term_out", "data": line})
+        except Exception:
+            pass
+        self.dead = True
+        self._send({"type": "term_status", "state": "closed",
+                    "message": f"terminal de '{self.distro}' finalizada"})
 
 
 # -- CSP nonce (H4): nonce aleatorio por request para <script>/<style> ----
@@ -329,51 +481,136 @@ class PanelHandler(BaseHTTPRequestHandler):
         self.end_headers()
         return self.request
 
+    @staticmethod
+    def _recv_exact(sock: socket.socket, n: int) -> bytes | None:
+        buf = b""
+        while len(buf) < n:
+            try:
+                chunk = sock.recv(n - len(buf))
+            except socket.timeout:
+                raise
+            except Exception:
+                return None
+            if not chunk:
+                return None
+            buf += chunk
+        return buf
+
+    def _ws_read_frame(self, sock: socket.socket) -> tuple[int, bytes] | None:
+        """Lee un frame WebSocket (con desencapsulado de mask). None = cerrar."""
+        header = self._recv_exact(sock, 2)
+        if not header:
+            return None
+        opcode = header[0] & 0x0F
+        masked = header[1] & 0x80
+        length = header[1] & 0x7F
+        if length == 126:
+            ext = self._recv_exact(sock, 2)
+            if not ext:
+                return None
+            length = struct.unpack("!H", ext)[0]
+        elif length == 127:
+            ext = self._recv_exact(sock, 8)
+            if not ext:
+                return None
+            length = struct.unpack("!Q", ext)[0]
+        if length > 1 << 20:  # 1 MB max por frame
+            return None
+        mask = b""
+        if masked:
+            mask = self._recv_exact(sock, 4)
+            if mask is None:
+                return None
+        payload = self._recv_exact(sock, length) if length else b""
+        if payload is None:
+            return None
+        if masked and mask:
+            payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        return opcode, payload
+
     def _ws_serve(self, sock: socket.socket) -> None:
-        """Loop WebSocket: envia estado inicial y mantiene vivo."""
+        """Loop WebSocket: estado inicial + terminal WSL (term_* por frame texto)."""
         panel = self.panel
         with panel._ws_lock:
             panel.ws_clients.add(sock)
+
+        def send(obj: dict) -> None:
+            try:
+                data = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+                panel._ws_send(sock, data)
+            except Exception:
+                pass
+
+        term: WslTerminal | None = None
         try:
             # Estado inicial
             try:
                 state = panel.state()
-                panel._ws_send(sock, json.dumps({"type": "state", "data": state}, ensure_ascii=False).encode("utf-8"))
+                send({"type": "state", "data": state})
             except Exception:
                 pass
             sock.settimeout(30)
             while panel.running:
                 try:
-                    # Leer frame del cliente (ping/pong/close)
-                    header = sock.recv(2)
-                    if not header or len(header) < 2:
-                        break
-                    opcode = header[0] & 0x0F
-                    if opcode == 0x8:  # close
-                        break
-                    # Para simplificar, ignoramos el payload del cliente
-                    masked = header[1] & 0x80
-                    length = header[1] & 0x7F
-                    if length == 126:
-                        length = struct.unpack("!H", sock.recv(2))[0]
-                    elif length == 127:
-                        length = struct.unpack("!Q", sock.recv(8))[0]
-                    if masked:
-                        mask = sock.recv(4)
-                    if length:
-                        sock.recv(length + (4 if masked else 0))
-                    # Responder pong si es ping
-                    if opcode == 0x9:
-                        sock.sendall(b"\x8A\x00")
+                    frame = self._ws_read_frame(sock)
                 except socket.timeout:
-                    # Ping de keepalive
-                    try:
-                        panel._ws_send(sock, json.dumps({"type": "ping"}, ensure_ascii=False).encode("utf-8"))
-                    except Exception:
-                        break
+                    # Ping de keepalive + chequear que la terminal siga viva
+                    send({"type": "ping"})
+                    continue
                 except Exception:
                     break
+                if frame is None:
+                    break
+                opcode, payload = frame
+                if opcode == 0x8:  # close
+                    break
+                if opcode == 0x9:  # ping -> pong
+                    try:
+                        sock.sendall(b"\x8A\x00")
+                    except Exception:
+                        break
+                    continue
+                if opcode in (0x1, 0x2) and payload:  # texto/binario: JSON
+                    try:
+                        msg = json.loads(payload.decode("utf-8"))
+                    except (ValueError, UnicodeDecodeError):
+                        continue
+                    if not isinstance(msg, dict):
+                        continue
+                    mtype = msg.get("type")
+                    if mtype == "term_start":
+                        if term is not None:
+                            term.stop()
+                        distro = str(msg.get("distro") or "").strip()
+                        if not distro:
+                            send({"type": "term_status", "state": "error",
+                                  "message": "distro requerida"})
+                            continue
+                        term = WslTerminal(distro, send)
+                        err = term.start()
+                        if err:
+                            send({"type": "term_status", "state": "error",
+                                  "message": err})
+                            term = None
+                    elif mtype == "term_cmd":
+                        if term is None or term.dead:
+                            send({"type": "term_status", "state": "closed",
+                                  "message": "abre la terminal primero"})
+                        else:
+                            term.submit(str(msg.get("cmd") or ""))
+                    elif mtype == "term_stop":
+                        if term is not None:
+                            term.stop()
+                            term = None
+                        send({"type": "term_status", "state": "closed",
+                              "message": "terminal cerrada"})
+                # opcodes restantes (continuation, pong) se ignoran
         finally:
+            if term is not None:
+                try:
+                    term.stop()
+                except Exception:
+                    pass
             with panel._ws_lock:
                 panel.ws_clients.discard(sock)
             try:
@@ -484,6 +721,18 @@ class PanelHandler(BaseHTTPRequestHandler):
                 parts = [p for p in path.split("/") if p]
                 if len(parts) == 5:
                     self._send(*_json(self.panel._distro_metrics(parts[3])))
+                else:
+                    self._deny(404, "no encontrado")
+            elif path.startswith("/api/v1/tunnels/") and path.endswith("/log"):
+                parts = [p for p in path.split("/") if p]
+                if len(parts) == 5:
+                    self._send(*_json(self.panel.tunnel_log(parts[3])))
+                else:
+                    self._deny(404, "no encontrado")
+            elif path.startswith("/api/v1/tunnels/") and path.endswith("/diag"):
+                parts = [p for p in path.split("/") if p]
+                if len(parts) == 5:
+                    self._send(*_json(self.panel.tunnel_diag(parts[3])))
                 else:
                     self._deny(404, "no encontrado")
             else:
@@ -745,7 +994,7 @@ class PanelHandler(BaseHTTPRequestHandler):
                         self._send(*_json({"ok": False, "error": f"import fallo: {error_lines[0][:200]}"}))
                         return
                     # Si solo hay warnings, continuar
-                self.metrics.record_event("web_distro_import", distro=name)
+                self.panel.metrics.record_event("web_distro_import", distro=name)
                 self._send(*_json({"ok": True, "message": f"distro '{name}' importada correctamente"}))
             finally:
                 if tar_path:
@@ -869,7 +1118,10 @@ class WebPanel:
                 frame.append(127)
                 frame.extend(struct.pack("!Q", length))
             frame.extend(data)
-            sock.sendall(frame)
+            # Lock global: broadcast + terminal comparten sockets; sendall
+            # concurrentios entrelazarian frames.
+            with _WS_SEND_MU:
+                sock.sendall(frame)
         except (ConnectionResetError, BrokenPipeError, OSError):
             pass
 
@@ -1002,6 +1254,45 @@ class WebPanel:
         """Lista distros WSL via wsl.exe -l -v (timeout corto, no cuelga)."""
         return {"ok": True, "distros": self._get_wsl_distros()}
 
+    def tunnel_log(self, tunnel_id: str) -> dict[str, Any]:
+        """Tail del log ssh/autossh del tunnel (diagnostico de fallos)."""
+        store = self.supervisor.store
+        if store.get_tunnel(tunnel_id) is None:
+            return {"ok": False, "error": f"tunnel '{tunnel_id}' no existe"}
+        logf = self.supervisor.ssh._logfile(tunnel_id)
+        tail = self.supervisor.ssh.read_log_tail(tunnel_id, max_bytes=16384)
+        return {
+            "ok": True,
+            "tunnel_id": tunnel_id,
+            "path": str(logf),
+            "log": tail[-16000:],
+        }
+
+    def tunnel_diag(self, tunnel_id: str) -> dict[str, Any]:
+        """Razon por la que el tunnel no esta arriba + estado actual."""
+        store = self.supervisor.store
+        tun = store.get_tunnel(tunnel_id)
+        if tun is None:
+            return {"ok": False, "error": f"tunnel '{tunnel_id}' no existe"}
+        alive = self.supervisor.ssh.is_alive(tun)
+        reason = None
+        if not alive:
+            reason = self.supervisor.tunnel_reason.get(tunnel_id) or \
+                self.supervisor.ssh.failure_reason(tun)
+        vps = store.get_vps(tun.vps_id)
+        return {
+            "ok": True,
+            "tunnel_id": tunnel_id,
+            "alive": alive,
+            "state": self.supervisor.tunnel_state.get(tunnel_id),
+            "reason": reason,
+            "vps_exists": vps is not None,
+            "vps": ({"host": vps.host, "user": vps.user, "port": vps.port}
+                    if vps else None),
+            "local": tun.ssh_dest,
+            "gate_ok": self.supervisor.ssh._gate_ok(tun),
+        }
+
     @staticmethod
     def _decode_wsl(data: bytes) -> str:
         """Decodifica salida de wsl.exe (UTF-16-LE con/sin BOM)."""
@@ -1058,17 +1349,21 @@ class WebPanel:
                 return {"ok": True, "message": f"forward '{parts[4]}' eliminado"}
         if parts[:3] == ["api", "v1", "tunnels"]:
             if len(parts) == 4 and parts[3] == "add":
-                remotes = body.get("remotes") or []
+                remotes = body.get("remotes") or body.get("remote") or []
                 if isinstance(remotes, str):
                     remotes = [r.strip() for r in remotes.split(",") if r.strip()]
                 if not isinstance(remotes, list) or not remotes:
                     return {"ok": False, "error": "remotes requerido (lista host:puerto)"}
                 tun = Tunnel(
                     id=str(body.get("id", "")).strip(),
+                    type=str(body.get("type", "ssh")).strip() or "ssh",
+                    enabled=bool(body.get("enabled", True)),
                     vps_id=str(body.get("vps_id", "")).strip(),
                     local_bind=self._parse_bind(body.get("local"), "local"),
                     remote_binds=[self._parse_bind(r, "remote") for r in remotes],
                     auto_start=bool(body.get("auto_start", True)),
+                    keepalive_interval=int(body.get("keepalive_interval") or 30),
+                    keepalive_count=int(body.get("keepalive_count") or 3),
                     health_gate=TunnelHealthGate(enabled=bool(body.get("health_gate", True))),
                 )
                 if not tun.id or not tun.vps_id:
@@ -1131,27 +1426,34 @@ class WebPanel:
                     return {"ok": True, "message": f"{tun_id} actualizado"}
                 if op == "edit":
                     try:
-                        from wsl_port.vendor.port_forwarder.core.config import TunnelHealthGate
                         vps_id = str(body.get("vps_id", tun.vps_id)).strip()
                         local = body.get("local", "")
-                        remote_list = body.get("remote", []) or []
+                        remote_list = body.get("remote") or body.get("remotes") or []
+                        if isinstance(remote_list, str):
+                            remote_list = [r.strip() for r in remote_list.split(",") if r.strip()]
                         auto_start = bool(body.get("auto_start", tun.auto_start))
                         enabled = bool(body.get("enabled", tun.enabled))
                         health_gate_enabled = bool(body.get("health_gate", tun.health_gate.enabled))
-                        
+                        keepalive_interval = int(body.get("keepalive_interval") or tun.keepalive_interval)
+                        keepalive_count = int(body.get("keepalive_count") or tun.keepalive_count)
+                        tun_type = str(body.get("type", tun.type)).strip() or tun.type
+
                         vps = store.get_vps(vps_id)
                         if not vps:
                             return {"ok": False, "error": f"vps '{vps_id}' no existe"}
                         lb = self._parse_bind(local, "local") if local else tun.local_bind
                         remote_binds = [self._parse_bind(r, "remote") for r in remote_list] if remote_list else tun.remote_binds
                         hg = TunnelHealthGate(enabled=health_gate_enabled)
-                        
+
                         tun.id = tun_id
+                        tun.type = tun_type
                         tun.vps_id = vps_id
                         tun.local_bind = lb
                         tun.remote_binds = remote_binds
                         tun.auto_start = auto_start
                         tun.enabled = enabled
+                        tun.keepalive_interval = keepalive_interval
+                        tun.keepalive_count = keepalive_count
                         tun.health_gate = hg
                         store.save()
                         self.metrics.record_event("web_tunnel_edit", tunnel_id=tun_id)
@@ -1317,7 +1619,9 @@ class WebPanel:
                             return {"ok": False, "error": f"VPS '{cfg.vps_target_host}' no existe"}
                         
                         # Crear o actualizar el túnel MCP
-                        from wsl_port.vendor.port_forwarder.core.config import Tunnel, Bind, TunnelHealthGate
+                        # (Tunnel/Bind/TunnelHealthGate ya estan importados
+                        # a nivel de modulo; un import local aqui romperia
+                        # 'tunnels/add' con UnboundLocalError)
                         mcp_tunnel = Tunnel(
                             id=mcp_tunnel_id,
                             type="ssh",
@@ -1593,6 +1897,20 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .dialog .row input, .dialog .row select { width:100%; }
   .dialog .btns { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
   .empty-state { text-align:center; padding:32px; color:var(--muted); font-size:13px; }
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.65); display:flex; align-items:center; justify-content:center; z-index:600; }
+  .modal { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; width:600px; max-width:94vw; max-height:92vh; overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,.5); }
+  .modal h3 { margin:0 0 14px; font-size:15px; color:var(--text); }
+  .modal .grid { display:grid; grid-template-columns:160px 1fr; gap:8px 10px; align-items:center; font-size:12px; }
+  .modal .grid>label { color:var(--muted); text-align:right; font-weight:500; }
+  .modal .grid input, .modal .grid select { width:100%; }
+  .modal .grid .span { grid-column:2; }
+  .modal .rem-row { display:flex; gap:6px; margin-bottom:6px; }
+  .modal .btns { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
+  #term-out { height:420px; overflow-y:auto; background:#0b0f14; color:#d4d4d4; font-family:ui-monospace,Consolas,monospace; font-size:12px; line-height:1.45; white-space:pre-wrap; word-break:break-all; margin:0; padding:8px; border-radius:6px; border:1px solid var(--line); }
+  .tun-err { color:var(--err); font-size:11px; max-width:280px; white-space:normal; line-height:1.3; margin-top:2px; }
+  .log-box { background:#0b0f14; border:1px solid var(--line); border-radius:6px; padding:8px; font-family:ui-monospace,Consolas,monospace; font-size:11px; color:#d4d4d4; max-height:300px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; }
+  .diag-reason { color:var(--err); font-size:13px; font-weight:600; margin:8px 0; line-height:1.4; }
+  .diag-ok { color:var(--ok); font-size:13px; font-weight:600; margin:8px 0; }
   .metric-bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:4px; }
   .metric-bar-fill { height:100%; background:linear-gradient(90deg,var(--ok),var(--warn)); border-radius:3px; transition:width .3s; }
   .metric-bar-fill.hot { background:linear-gradient(90deg,var(--warn),var(--err)); }
@@ -1610,6 +1928,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <div class="tabs">
   <button class="tab active" data-cmd="showTab:distros"> Distros WSL </button>
   <button class="tab" data-cmd="showTab:publicar"> Publicar en Internet </button>
+  <button class="tab" data-cmd="showTab:terminal"> Terminal WSL </button>
   <button class="tab" data-cmd="showTab:tunnels"> Tunnels / VPS </button>
   <button class="tab" data-cmd="showTab:forwards"> Forwards </button>
   <button class="tab" data-cmd="showTab:logs"> Logs </button>
@@ -1655,38 +1974,32 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div id="pub-result" class="muted text-sm" style="margin-top:10px;"></div>
   </div>
 </div>
+<div id="tab-terminal" class="tab-content">
+  <div class="toolbar" style="align-items:center;">
+    <label class="muted text-sm">Distro:</label><select id="term-distro"></select>
+    <button class="success" data-cmd="termOpen">Abrir terminal</button>
+    <button class="danger outline" data-cmd="termClose">Cerrar</button>
+    <span id="term-state" class="muted text-sm">cerrada</span>
+    <span class="muted text-sm" style="margin-left:auto;">bash persistente · sin soporte de apps a pantalla completa (vim/top)</span>
+  </div>
+  <div class="card" style="padding:6px;">
+    <pre id="term-out" readonly></pre>
+    <div class="form" style="margin-top:6px;align-items:center;">
+      <span class="accent" style="font-family:ui-monospace,Consolas,monospace;">$</span>
+      <input id="term-in" style="flex:1;font-family:ui-monospace,Consolas,monospace;" placeholder="comando... (Enter para enviar, ↑↓ historial)" disabled autocomplete="off">
+    </div>
+  </div>
+</div>
 <div id="tab-tunnels" class="tab-content">
   <div id="activity"></div>
   <div class="toolbar">
     <button class="success" data-cmd="refresh">Refrescar</button>
-    <button data-cmd="toggleTunForm">Nuevo Tunnel...</button>
-    <button data-cmd="toggleTunEditForm">Editar...</button>
+    <button data-cmd="openTunForm">Nuevo Tunnel...</button>
+    <button class="outline" data-cmd="openTunEdit">Editar...</button>
+    <button class="warn outline" data-cmd="tunDiagSel">Diagnosticar</button>
     <button data-cmd="tunnelActionSel:start">Iniciar</button>
     <button class="warn" data-cmd="tunnelActionSel:stop">Detener</button>
     <button class="danger outline" data-cmd="deleteTunnelSel">Eliminar</button>
-  </div>
-  <div id="tun-form-panel" class="card" style="display:none;">
-    <h2>Nuevo Tunnel SSH</h2>
-    <div class="form" style="flex-direction:column;gap:8px;">
-      <div class="form"><label style="width:120px">ID:</label><input id="tun-id" placeholder="mi-tunnel" style="width:200px"></div>
-      <div class="form"><label style="width:120px">VPS:</label><select id="tun-vps"></select></div>
-      <div class="form"><label style="width:120px">Host local:</label><input id="tun-lhost" value="127.0.0.1" style="width:150px"></div>
-      <div class="form"><label style="width:120px">Puerto local:</label><input id="tun-lport" type="number" value="9000" style="width:100px"></div>
-      <div class="form"><label style="width:120px">Host remoto:</label><input id="tun-rhost" value="0.0.0.0" style="width:150px"></div>
-      <div class="form"><label style="width:120px">Puerto remoto:</label><input id="tun-rport" type="number" value="18097" style="width:100px"></div>
-      <div class="form"><button class="success" data-cmd="submitTunForm">Crear Tunnel</button><button class="outline" data-cmd="toggleTunForm">Cancelar</button></div>
-    </div>
-  </div>
-  <div id="tun-edit-panel" class="card" style="display:none;">
-    <h2>Editar Tunnel</h2>
-    <div class="form" style="flex-direction:column;gap:8px;">
-      <div class="form"><label style="width:120px">VPS:</label><select id="tun-evps"></select></div>
-      <div class="form"><label style="width:120px">Host local:</label><input id="tun-elhost" style="width:150px"></div>
-      <div class="form"><label style="width:120px">Puerto local:</label><input id="tun-elport" type="number" style="width:100px"></div>
-      <div class="form"><label style="width:120px">Host remoto:</label><input id="tun-erhost" style="width:150px"></div>
-      <div class="form"><label style="width:120px">Puerto remoto:</label><input id="tun-erport" type="number" style="width:100px"></div>
-      <div class="form"><button class="success" data-cmd="submitTunEdit">Guardar</button><button class="outline" data-cmd="toggleTunEditForm">Cancelar</button></div>
-    </div>
   </div>
   <div class="card"><table><thead><tr><th>ID</th><th>Tipo</th><th>VPS</th><th>Local</th><th>Remoto</th><th>Estado</th></tr></thead><tbody id="tun-body"></tbody></table></div>
   <div class="toolbar">
@@ -1824,7 +2137,7 @@ function bindCmdEvents(){
   });
 }
 async function clearAllForwards(){ if(await showConfirm('Limpiar forwards','Limpiar TODOS los forwards?')) post('/api/v1/forwards/clear', 'Limpiando forwards...'); }
-function esc(v){ const d=document.createElement('div'); d.textContent=(v===null||v===undefined)?'':String(v); return d.innerHTML; }
+function esc(v){ const d=document.createElement('div'); d.textContent=(v===null||v===undefined)?'':String(v); return d.innerHTML.replace(/"/g,'&quot;'); }
 function showDialog(title, fields, onOk){
   const overlay = document.createElement('div');
   overlay.className = 'dialog-overlay';
@@ -1903,6 +2216,7 @@ function renderDistros(list){
   const b=document.getElementById('distro-body'); b.innerHTML='';
   const sel=document.getElementById('pub-distro'); if(sel){ const cur=sel.value; sel.innerHTML=''; list.forEach(d=>{const o=document.createElement('option');o.value=d.name;o.textContent=d.name;sel.appendChild(o);}); if(cur) sel.value=cur; else if(list[0]) sel.value=list[0].name; }
   const fSel=document.getElementById('fwd-distro'); if(fSel){ const cur=fSel.value; fSel.innerHTML=''; list.forEach(d=>{const o=document.createElement('option');o.value=d.name;o.textContent=d.name;fSel.appendChild(o);}); if(cur) fSel.value=cur; }
+  const tSel=document.getElementById('term-distro'); if(tSel){ const cur=tSel.value; tSel.innerHTML=''; list.forEach(d=>{const o=document.createElement('option');o.value=d.name;o.textContent=d.name+(d.running?'':' (apagada)');tSel.appendChild(o);}); if(cur&&list.some(d=>d.name===cur)) tSel.value=cur; }
   if(!list||!list.length){ b.innerHTML='<tr><td colspan=4 class="empty-state">sin distros (WSL no responde)</td></tr>'; return; }
   for(const d of list){
     const state=d.state==='Running'?'running':'stopped';
@@ -2021,48 +2335,156 @@ function doUnpublish(){
 }
 function tunnelActionSel(op){ const sel=document.querySelector('#tun-body tr.selected'); if(!sel){ toast('Selecciona un tunnel','warn'); return; } const labels={start:'Iniciando tunnel...',stop:'Deteniendo tunnel...',restart:'Reiniciando tunnel...'}; post('/api/v1/tunnels/'+encodeURIComponent(sel.dataset.id)+'/'+op, labels[op]||'Procesando tunnel...'); }
 async function deleteTunnelSel(){ const sel=document.querySelector('#tun-body tr.selected'); if(!sel){ toast('Selecciona un tunnel','warn'); return; } if(!await showConfirm('Eliminar tunnel','Eliminar tunnel '+sel.dataset.id+'?')) return; post('/api/v1/tunnels/'+encodeURIComponent(sel.dataset.id)+'/remove', 'Eliminando tunnel...'); }
-/* ---- Tunnel inline forms ---- */
-function toggleTunForm(){
-  const p=document.getElementById('tun-form-panel'); const v=p.style.display!=='none'; p.style.display=v?'none':'block';
-  document.getElementById('tun-edit-panel').style.display='none';
-  if(!v) populateTunVps('tun-vps');
-}
-function toggleTunEditForm(){
+/* ---- Tunnel modal (popup con todas las opciones) ---- */
+let LAST_TUNNELS=[];
+function openTunForm(){ tunDialog(null); }
+function openTunEdit(){
   const sel=document.querySelector('#tun-body tr.selected');
   if(!sel){ toast('Selecciona un tunnel para editar','warn'); return; }
-  const p=document.getElementById('tun-edit-panel'); const v=p.style.display!=='none';
-  if(v){ p.style.display='none'; return; }
-  p.style.display='block';
-  document.getElementById('tun-form-panel').style.display='none';
-  populateTunVps('tun-evps').then(()=>{
-    const t=sel.dataset;
-    document.getElementById('tun-evps').value=t.vps||'';
-    const lp=(t.local||'').split(':'); document.getElementById('tun-elhost').value=lp[0]||'127.0.0.1'; document.getElementById('tun-elport').value=lp[1]||'';
-    const rp=(t.remote||'').split(':'); document.getElementById('tun-erhost').value=rp[0]||'0.0.0.0'; document.getElementById('tun-erport').value=rp[1]||'';
+  const t=LAST_TUNNELS.find(x=>x.id===sel.dataset.id);
+  tunDialog(t||{id:sel.dataset.id});
+}
+function tunDialog(t){
+  document.getElementById('tun-modal')?.remove();
+  const isNew=!t;
+  const ov=document.createElement('div'); ov.className='modal-overlay'; ov.id='tun-modal';
+  ov.innerHTML='<div class="modal"><h3>'+(isNew?'Nuevo Tunnel':'Editar Tunnel · '+esc(t.id))+'</h3>'
+    +'<div class="grid">'
+    +'<label>ID</label><input id="tm-id" value="'+esc(t&&t.id||'')+'" placeholder="mi-tunnel"'+(isNew?'':' readonly')+'>'
+    +'<label>Tipo</label><select id="tm-type"><option value="ssh">SSH</option><option value="tailscale">Tailscale</option><option value="cloudflare">Cloudflare</option></select>'
+    +'<label>VPS</label><select id="tm-vps"></select>'
+    +'<label>Host local</label><input id="tm-lhost" value="127.0.0.1">'
+    +'<label>Puerto local</label><input id="tm-lport" type="number" value="9000" min="1" max="65535">'
+    +'<label>Remotos</label><div id="tm-remotes" class="span" style="grid-column:2;"></div>'
+    +'<div></div><div class="span" style="grid-column:2;"><button class="outline" id="tm-addrem">+ Anadir remoto</button></div>'
+    +'<label>Keepalive (seg)</label><input id="tm-kint" type="number" value="30" min="0">'
+    +'<label>Keepalive max</label><input id="tm-kcnt" type="number" value="3" min="0">'
+    +'<label>Opciones</label><div class="span" style="grid-column:2;display:flex;gap:14px;flex-wrap:wrap;">'
+    +'<label style="color:var(--text)"><input type="checkbox" id="tm-autostart" checked> auto_start</label>'
+    +'<label style="color:var(--text)"><input type="checkbox" id="tm-enabled" checked> enabled</label>'
+    +'<label style="color:var(--text)"><input type="checkbox" id="tm-hgate" checked> health_gate</label></div>'
+    +'</div>'
+    +'<div class="btns"><button class="outline" id="tm-cancel">Cancelar</button><button class="success" id="tm-ok">'+(isNew?'Crear Tunnel':'Guardar cambios')+'</button></div>'
+    +'</div>';
+  document.body.appendChild(ov);
+  ov.querySelector('#tm-cancel').onclick=()=>ov.remove();
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  api('/api/v1/vps').then(d=>{
+    const sel=ov.querySelector('#tm-vps'); sel.innerHTML='';
+    (d.vps||[]).forEach(v=>{ const o=document.createElement('option'); o.value=v.id; o.textContent=v.id+' ('+v.host+')'; sel.appendChild(o); });
+    if(t&&t.vps_id) sel.value=t.vps_id;
   });
+  if(!isNew){
+    ov.querySelector('#tm-type').value=t.type||'ssh';
+    const lp=(t.local||'127.0.0.1:9000').split(':');
+    ov.querySelector('#tm-lhost').value=lp[0]||'127.0.0.1';
+    ov.querySelector('#tm-lport').value=lp[1]||'';
+    const rems=(t.remote&&t.remote.length)?t.remote:['0.0.0.0:'];
+    rems.forEach(r=>{ const rp=(''+r).split(':'); addTunRemote(ov, rp[0]||'0.0.0.0', rp[1]||''); });
+    if(t.keepalive_interval!=null) ov.querySelector('#tm-kint').value=t.keepalive_interval;
+    if(t.keepalive_count!=null) ov.querySelector('#tm-kcnt').value=t.keepalive_count;
+    ov.querySelector('#tm-autostart').checked=t.auto_start!==false;
+    ov.querySelector('#tm-enabled').checked=t.enabled!==false;
+    ov.querySelector('#tm-hgate').checked=t.health_gate!==false;
+  } else {
+    addTunRemote(ov,'0.0.0.0','18097');
+  }
+  ov.querySelector('#tm-addrem').onclick=()=>addTunRemote(ov,'0.0.0.0','');
+  ov.querySelector('#tm-ok').onclick=()=>submitTunModal(ov, isNew?null:t.id);
 }
-function populateTunVps(selId){ return api('/api/v1/vps').then(d=>{
-  const sel=document.getElementById(selId); if(!sel) return; const cur=sel.value; sel.innerHTML='';
-  (d.vps||[]).forEach(v=>{const o=document.createElement('option');o.value=v.id;o.textContent=v.id+' ('+v.host+')';sel.appendChild(o);});
-  if(cur) sel.value=cur;
-});}
-function submitTunForm(){
-  const id=document.getElementById('tun-id').value.trim(), vps=document.getElementById('tun-vps').value;
-  const lh=document.getElementById('tun-lhost').value.trim()||'127.0.0.1', lp=document.getElementById('tun-lport').value;
-  const rh=document.getElementById('tun-rhost').value.trim()||'0.0.0.0', rp=document.getElementById('tun-rport').value;
-  if(!id||!vps||!lp||!rp){ toast('Completa todos los campos','err'); return; }
-  postJson('/api/v1/tunnels/add',{id, vps_id:vps, local:lh+':'+lp, remotes:[rh+':'+rp]}, 'Creando tunnel...');
-  document.getElementById('tun-form-panel').style.display='none';
+function addTunRemote(ov, host, port){
+  const div=document.createElement('div'); div.className='rem-row';
+  div.innerHTML='<input placeholder="host" value="'+esc(host||'0.0.0.0')+'" style="flex:2"><input placeholder="puerto" type="number" value="'+esc(port||'')+'" style="flex:1" min="1" max="65535"><button class="danger outline" title="Quitar">x</button>';
+  div.querySelector('button').onclick=()=>div.remove();
+  ov.querySelector('#tm-remotes').appendChild(div);
 }
-function submitTunEdit(){
-  const sel=document.querySelector('#tun-body tr.selected'); if(!sel) return;
-  const vps=document.getElementById('tun-evps').value;
-  const lh=document.getElementById('tun-elhost').value.trim()||'127.0.0.1', lp=document.getElementById('tun-elport').value;
-  const rh=document.getElementById('tun-erhost').value.trim()||'0.0.0.0', rp=document.getElementById('tun-erport').value;
-  if(!vps||!lp||!rp){ toast('Completa todos los campos','err'); return; }
-  postJson('/api/v1/tunnels/'+encodeURIComponent(sel.dataset.id)+'/edit',{vps_id:vps, local:lh+':'+lp, remote:rh+':'+rp}, 'Editando tunnel...');
-  document.getElementById('tun-edit-panel').style.display='none';
+function submitTunModal(ov, editId){
+  const id=ov.querySelector('#tm-id').value.trim();
+  const vps=ov.querySelector('#tm-vps').value;
+  const lh=ov.querySelector('#tm-lhost').value.trim()||'127.0.0.1';
+  const lp=ov.querySelector('#tm-lport').value.trim();
+  const remotes=[...ov.querySelectorAll('#tm-remotes .rem-row')].map(r=>{
+    const ins=r.querySelectorAll('input'); return {host:ins[0].value.trim(), port:ins[1].value.trim()};
+  }).filter(r=>r.host&&r.port).map(r=>r.host+':'+r.port);
+  const payload={
+    id, vps_id:vps, type:ov.querySelector('#tm-type').value,
+    local:lh+':'+lp, remotes,
+    auto_start:ov.querySelector('#tm-autostart').checked,
+    enabled:ov.querySelector('#tm-enabled').checked,
+    health_gate:ov.querySelector('#tm-hgate').checked,
+    keepalive_interval:parseInt(ov.querySelector('#tm-kint').value)||30,
+    keepalive_count:parseInt(ov.querySelector('#tm-kcnt').value)||3,
+  };
+  if(!id||!vps||!lp){ toast('ID, VPS y puerto local son obligatorios','err'); return; }
+  if(!remotes.length){ toast('Anade al menos un remoto host:puerto','err'); return; }
+  if(editId) postJson('/api/v1/tunnels/'+encodeURIComponent(editId)+'/edit', payload, 'Guardando tunnel...');
+  else postJson('/api/v1/tunnels/add', payload, 'Creando tunnel...');
+  ov.remove();
 }
+/* ---- Diagnostico de tunnel caido ---- */
+function tunDiagSel(){ const sel=document.querySelector('#tun-body tr.selected'); if(!sel){ toast('Selecciona un tunnel','warn'); return; } tunDiag(sel.dataset.id); }
+async function tunDiag(id){
+  activity('Diagnosticando '+id+'...','info');
+  let d, l;
+  try{ d=await api('/api/v1/tunnels/'+encodeURIComponent(id)+'/diag'); }catch(e){ return; }
+  try{ l=await api('/api/v1/tunnels/'+encodeURIComponent(id)+'/log'); }catch(e){ l={ok:false}; }
+  activity('','');
+  if(!d.ok){ toast(d.error||'Error','err'); return; }
+  const ov=document.createElement('div'); ov.className='modal-overlay'; ov.id='tun-diag-modal';
+  let h='<div class="modal" style="width:640px;"><h3>Diagnostico · '+esc(id)+'</h3>';
+  if(d.alive){ h+='<div class="diag-ok">✔ Tunnel arriba (state: '+esc(d.state||'running')+')</div>'; }
+  else { h+='<div class="diag-reason">✖ Razon del fallo: '+esc(d.reason||d.state||'desconocida')+'</div>'; }
+  h+='<div class="grid" style="display:grid;grid-template-columns:160px 1fr;gap:4px 10px;font-size:12px;">'
+    +'<label style="color:var(--muted);text-align:right;">Estado</label><span>'+esc(d.state||'-')+'</span>'
+    +'<label style="color:var(--muted);text-align:right;">VPS</label><span>'+(d.vps?(esc(d.vps.user)+'@'+esc(d.vps.host)+':'+esc(d.vps.port)):'<span style="color:var(--err)">no existe en config</span>')+'</span>'
+    +'<label style="color:var(--muted);text-align:right;">Local</label><span>'+esc(d.local||'-')+'</span>'
+    +'<label style="color:var(--muted);text-align:right;">Servicio local</label><span>'+(d.gate_ok?'<span style="color:var(--ok)">escuchando</span>':'<span style="color:var(--warn)">sin listener</span>')+'</span></div>';
+  h+='<div style="margin-top:12px;font-size:12px;color:var(--muted);">Ultimo log: '+esc((l.ok&&l.path)||'(sin log)')+'</div>';
+  h+='<div class="log-box" style="margin-top:6px;">'+esc((l.ok&&l.log&&l.log.trim())||'(vacio)')+'</div>';
+  h+='<div class="btns"><button class="outline" id="td-close">Cerrar</button><button class="success" id="td-retry">Reintentar ahora</button></div></div>';
+  ov.innerHTML=h;
+  document.body.appendChild(ov);
+  ov.querySelector('#td-close').onclick=()=>ov.remove();
+  ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
+  ov.querySelector('#td-retry').onclick=()=>{ ov.remove();
+    const tr=[...document.querySelectorAll('#tun-body tr')].find(r=>r.dataset.id===id);
+    if(tr){ tr.parentElement.querySelectorAll('tr').forEach(r=>r.classList.remove('selected')); tr.classList.add('selected'); }
+    post('/api/v1/tunnels/'+encodeURIComponent(id)+'/restart','Reiniciando '+id+'...'); };
+}
+/* ---- Terminal WSL via WebSocket ---- */
+let TERM_ON=false; const termHist=[]; let termHistIdx=-1;
+function termWsSend(obj){
+  if(WS && WS.readyState===1){ WS.send(JSON.stringify(obj)); return true; }
+  toast('WebSocket no conectado, espera a que este verde','err'); return false;
+}
+function termOut(txt){ const o=document.getElementById('term-out'); o.textContent+=txt; o.scrollTop=o.scrollHeight; }
+function termSetState(txt, running){
+  TERM_ON=!!running;
+  document.getElementById('term-state').textContent=txt;
+  document.getElementById('term-in').disabled=!running;
+  if(running) document.getElementById('term-in').focus();
+}
+function termOpen(){
+  const d=document.getElementById('term-distro').value;
+  if(!d){ toast('Selecciona una distro','warn'); return; }
+  document.getElementById('term-out').textContent='';
+  termOut('$ abriendo terminal en '+d+'...\n');
+  if(termWsSend({type:'term_start', distro:d})) termSetState('abriendo...', false);
+}
+function termClose(){ termWsSend({type:'term_stop'}); }
+function termSubmit(){
+  const inp=document.getElementById('term-in');
+  const cmd=inp.value; if(!cmd.trim()) return;
+  if(!termWsSend({type:'term_cmd', cmd})) return;
+  termOut(cmd+'\n');
+  termHist.push(cmd); termHistIdx=termHist.length;
+  inp.value='';
+}
+document.getElementById('term-in').addEventListener('keydown', e=>{
+  if(e.key==='Enter'){ e.preventDefault(); termSubmit(); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); if(termHist.length){ termHistIdx=Math.max(0,termHistIdx-1); e.target.value=termHist[termHistIdx]||''; } }
+  else if(e.key==='ArrowDown'){ e.preventDefault(); if(termHist.length){ termHistIdx=Math.min(termHist.length,termHistIdx+1); e.target.value=termHist[termHistIdx]||''; } }
+});
 /* ---- VPS inline forms ---- */
 function toggleVpsForm(){
   const p=document.getElementById('vps-form-panel'); const v=p.style.display!=='none'; p.style.display=v?'none':'block';
@@ -2132,7 +2554,7 @@ function submitFwdForm(){
 }
 function deleteForwardSel(){ const sel=document.querySelector('#fwd-body tr.selected'); if(!sel){ toast('Selecciona un forward','warn'); return; } post('/api/v1/forwards/remove/'+encodeURIComponent(sel.dataset.id), 'Eliminando forward...'); }
 function renderForwards(list){ const b=document.getElementById('fwd-body'); b.innerHTML=''; if(!list||!list.length){ b.innerHTML='<tr><td colspan=6 class="empty-state">sin forwards</td></tr>'; return; } for(const f of list){ const tr=document.createElement('tr'); tr.dataset.id=f.id; tr.innerHTML='<td>'+esc(f.id)+'</td><td>:'+esc(f.listen_port)+'</td><td>'+esc(f.wsl_distro||'--')+'</td><td>:'+esc(f.wsl_port)+'</td><td>'+esc(f.protocol||'tcp')+'</td><td>'+badge(f.state)+'</td>'; b.appendChild(tr); } }
-function renderTunnels(list){ const b=document.getElementById('tun-body'); b.innerHTML=''; if(!list||!list.length){ b.innerHTML='<tr><td colspan=6 class="empty-state">sin tunnels</td></tr>'; return; } for(const t of list){ const tr=document.createElement('tr'); tr.dataset.id=t.id; tr.dataset.vps=t.vps_id||''; tr.dataset.local=t.local||''; tr.dataset.remote=(t.remote||[]).join(', '); tr.innerHTML='<td>'+esc(t.id)+'</td><td>'+esc(t.type||'ssh')+'</td><td>'+esc(t.vps_id||'--')+'</td><td>'+esc(t.local)+'</td><td>'+esc((t.remote||[]).join(', '))+'</td><td>'+badge(t.state)+'</td>'; b.appendChild(tr); } }
+function renderTunnels(list){ LAST_TUNNELS=list||[]; const b=document.getElementById('tun-body'); b.innerHTML=''; if(!list||!list.length){ b.innerHTML='<tr><td colspan=6 class="empty-state">sin tunnels</td></tr>'; return; } for(const t of list){ const tr=document.createElement('tr'); tr.dataset.id=t.id; tr.dataset.vps=t.vps_id||''; tr.dataset.local=t.local||''; tr.dataset.remote=(t.remote||[]).join(', '); const err=(t.state!=='running'&&t.error)?'<div class="tun-err" title="'+esc(t.error)+'">✖ '+esc(t.error)+'</div>':''; tr.innerHTML='<td>'+esc(t.id)+'</td><td>'+esc(t.type||'ssh')+'</td><td>'+esc(t.vps_id||'--')+'</td><td>'+esc(t.local)+'</td><td>'+esc((t.remote||[]).join(', '))+'</td><td>'+badge(t.state)+err+'</td>'; b.appendChild(tr); } }
 function renderVps(list){ const b=document.getElementById('vps-body'); b.innerHTML=''; const sel=document.getElementById('pub-vps'); if(sel){ const cur=sel.value; sel.innerHTML=''; list.forEach(v=>{const o=document.createElement('option');o.value=v.id;o.textContent=v.id;sel.appendChild(o);}); if(cur) sel.value=cur; else if(list[0]) sel.value=list[0].id; } if(!list||!list.length){ b.innerHTML='<tr><td colspan=4 class="empty-state">sin VPS</td></tr>'; return; } for(const v of list){ const tr=document.createElement('tr'); tr.dataset.id=v.id; tr.dataset.host=v.host; tr.dataset.user=v.user; tr.dataset.port=v.port; tr.innerHTML='<td>'+esc(v.id)+'</td><td>'+esc(v.host)+'</td><td>'+esc(v.user)+'</td><td>'+esc(v.port)+'</td>'; b.appendChild(tr); } }
 function renderAlerts(list){ const b=document.getElementById('alert-body'); b.innerHTML=''; if(!list||!list.length){ b.innerHTML='<tr><td colspan=2 class="empty-state">sin alertas</td></tr>'; return; } for(const a of list){ const tr=document.createElement('tr'); tr.innerHTML='<td>'+badge(a.severity==='error'?'down':a.severity)+'</td><td>'+esc(a.message)+'</td>'; b.appendChild(tr); } }
 function appendEvent(ev){ const d=document.getElementById('events'); const div=document.createElement('div'); div.textContent=new Date(ev.ts*1000).toLocaleTimeString()+' '+esc(ev.type)+(ev.detail?' '+esc(ev.detail):''); d.prepend(div); while(d.children.length>100) d.removeChild(d.lastChild); if(d.classList.contains('empty-state')) d.classList.remove('empty-state'); }
@@ -2154,7 +2576,7 @@ function connectWS(){
   const url=proto+'//'+location.host+'/ws?token='+encodeURIComponent(TOKEN);
   try{ WS=new WebSocket(url); }catch(e){ setTimeout(connectWS, 5000); return; }
   WS.onopen=()=>{ document.getElementById('ws-dot').className='ws-status ws-on'; document.getElementById('ws-status').textContent='WS'; document.getElementById('ws-indicator').style.background='var(--ok)'; wsTries=0; };
-  WS.onclose=()=>{ document.getElementById('ws-dot').className='ws-status ws-off'; document.getElementById('ws-status').textContent=''; document.getElementById('ws-indicator').style.background='var(--err)'; WS=null; wsTries++; setTimeout(connectWS, Math.min(3000*wsTries, 15000)); };
+  WS.onclose=()=>{ document.getElementById('ws-dot').className='ws-status ws-off'; document.getElementById('ws-status').textContent=''; document.getElementById('ws-indicator').style.background='var(--err)'; WS=null; wsTries++; if(TERM_ON){ TERM_ON=false; termOut('\n! conexion perdida, terminal cerrada\n'); } termSetState('cerrada (sin WS)', false); setTimeout(connectWS, Math.min(3000*wsTries, 15000)); };
   WS.onerror=()=>{ try{WS.close();}catch(e){} };
   WS.onmessage=(e)=>{
     try{
@@ -2163,6 +2585,12 @@ function connectWS(){
       else if(msg.type==='event'){ appendEvent(msg.data); }
       else if(msg.type==='toast'){ toast(msg.message, msg.kind||'info'); activity(msg.message, msg.kind||'info'); }
       else if(msg.type==='refresh'){ refresh(); refreshEvents(); }
+      else if(msg.type==='term_out'){ termOut(msg.data||''); }
+      else if(msg.type==='term_exit'){ termOut('[exit '+msg.code+']\n'); }
+      else if(msg.type==='term_status'){
+        if(msg.state==='running'){ termSetState('terminal: '+(msg.distro||''), true); termOut('$ terminal lista\n'); }
+        else { termSetState(msg.state==='error'?'error':'cerrada', false); if(msg.message) termOut('! '+msg.message+'\n'); }
+      }
     }catch(err){}
   };
 }
