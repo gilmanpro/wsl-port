@@ -504,8 +504,12 @@ class MainWindow:
         self.web_bind_var = tk.StringVar(value="127.0.0.1")
         r = _row(card_web, r, "Bind:", lambda p: ttk.Entry(p, textvariable=self.web_bind_var, width=14))
         self.web_pw_var = tk.StringVar()
+        _r_web_pw = r
         r = _row(card_web, r, "Clave:", lambda p: ttk.Entry(p, textvariable=self.web_pw_var, width=20, show="*"),
                  "Obligatoria. Se guarda cifrada (DPAPI).")
+        ttk.Button(card_web, text="Generar clave fuerte", bootstyle="info-outline",
+                   command=self._generate_web_key
+                   ).grid(row=_r_web_pw, column=2, sticky="w", padx=(6, 0))
 
         r = 0
         self.api_enabled_var = tk.BooleanVar(value=False)
@@ -545,6 +549,15 @@ class MainWindow:
         self.mcp_key_var = tk.StringVar()
         r = _row(card_mcp, r, "Token:", lambda p: ttk.Entry(p, textvariable=self.mcp_key_var, width=20, show="*"),
                  "Si vacio, se genera uno aleatorio al guardar.")
+        self.mcp_exec_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(card_mcp, text="Exponer wsl_exec (RCE en distros)",
+                        variable=self.mcp_exec_var, bootstyle="round-toggle").grid(
+            row=r, column=0, columnspan=2, sticky="w", pady=4)
+        r += 1
+        ttk.Label(card_mcp, text="Apagado: la herramienta desaparece de tools/list y toda llamada es rechazada.",
+                  style="Sub.TLabel", wraplength=280).grid(
+            row=r, column=0, columnspan=2, sticky="w", pady=(0, 4))
+        r += 1
 
         r = 0
         self.wsl_exe_var = tk.StringVar(value="")
@@ -618,6 +631,7 @@ class MainWindow:
             self.mcp_transport_var.set(cfg.mcp.transport)
             self.mcp_port_var.set(str(cfg.mcp.port))
             self.mcp_token_var.set(cfg.mcp.token_required)
+            self.mcp_exec_var.set(bool(getattr(cfg.mcp, "expose_exec", True)))
             self.wsl_exe_var.set(cfg.windows.wsl_exe)
             self.ssh_exe_var.set(cfg.windows.ssh_exe)
             self.netsh_exe_var.set(cfg.windows.netsh_exe)
@@ -702,6 +716,14 @@ class MainWindow:
         except Exception as e:
             messagebox.showerror("Limites", f"Error: {e}")
 
+    def _generate_web_key(self) -> None:
+        import secrets
+
+        self.web_pw_var.set(secrets.token_urlsafe(32))
+        messagebox.showinfo("Ajustes",
+            "Clave fuerte generada (43 caracteres).\n"
+            "Pulsa Guardar ajustes; es la que pedira el navegador.")
+
     def _save_settings(self) -> None:
         from tkinter import messagebox
         try:
@@ -723,6 +745,24 @@ class MainWindow:
             cfg.ui.web_panel_enabled = web_on
             cfg.ui.web_panel_port = int(self.web_port_var.get() or 8780)
             cfg.ui.web_panel_bind = self.web_bind_var.get().strip() or "127.0.0.1"
+            if web_pw and len(web_pw) < 12:
+                messagebox.showerror("Ajustes",
+                    "Clave demasiado corta (minimo 12 caracteres).\n"
+                    "Usa 'Generar clave fuerte'.")
+                return
+            bind = cfg.ui.web_panel_bind
+            if web_on and bind not in ("127.0.0.1", "localhost", "::1"):
+                from wsl_port.vendor.port_forwarder.utils.secrets import SecretsStore as _SS
+                _sec = _SS()
+                eff = web_pw or cfg.ui.web_panel_token or (
+                    _sec.get("web_panel_token") if _sec.check("web_panel_token") else "")
+                if len(eff) < 24:
+                    messagebox.showerror("Ajustes",
+                        f"Con bind expuesto ({bind}) la clave debe tener al "
+                        "menos 24 caracteres.\nUsa 'Generar clave fuerte'.\n\n"
+                        "Recuerda: el panel sirve HTTP sin TLS; considera "
+                        "bind 127.0.0.1 y acceso por tunel SSH.")
+                    return
             if web_pw:
                 from wsl_port.vendor.port_forwarder.utils.secrets import SecretsStore
                 SecretsStore().set("web_panel_token", web_pw)
@@ -737,6 +777,7 @@ class MainWindow:
             cfg.mcp.transport = self.mcp_transport_var.get()
             cfg.mcp.port = int(self.mcp_port_var.get() or 8782)
             cfg.mcp.token_required = self.mcp_token_var.get()
+            cfg.mcp.expose_exec = self.mcp_exec_var.get()
             if mcp_token:
                 cfg.mcp.token = mcp_token
             if self.wsl_exe_var.get().strip():
