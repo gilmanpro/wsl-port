@@ -368,8 +368,15 @@ class McpHttpServer:
 
     def __init__(self, service: "AppService | None" = None,
                  host: str = "127.0.0.1", port: int = 8796,
-                 token: str = "") -> None:
+                 token: str = "", expose_exec: bool = True) -> None:
         self.mcp = McpServer(service, token="")  # el bearer se valida en el borde
+        # C-1: interruptor de la herramienta peligrosa (RCE en distros).
+        # Filtrada de self.tools: no aparece en tools/list y tools/call la
+        # rechaza como "tool desconocida" (unica fuente de verdad).
+        self.expose_exec = bool(expose_exec)
+        if not self.expose_exec:
+            self.mcp.tools = [t for t in self.mcp.tools
+                              if t.get("name") != "wsl_exec"]
         self.bearer = token or ""
         self.host = host
         self.port = port

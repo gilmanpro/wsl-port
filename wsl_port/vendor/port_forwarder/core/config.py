@@ -24,6 +24,9 @@ from wsl_port.vendor.port_forwarder.utils import path as paths
 
 CONFIG_VERSION = 2
 
+# H-4: marcador para secretos omitidos en exportaciones (nunca credencial real)
+REDACTED = "<redactado>"
+
 
 class ConfigError(Exception):
     """Config invalida o ilegible."""
@@ -170,6 +173,8 @@ class Mcp:
     port: int = 8796
     token_required: bool = True
     token: str = ""
+    # C-1: expone la herramienta wsl_exec (RCE en distros) por MCP/export.
+    expose_exec: bool = True
     # Configuración para exportación al VPS
     vps_export_enabled: bool = False
     vps_target_port: int = 55872
@@ -330,6 +335,15 @@ def parse_config(data: dict[str, Any]) -> AppConfig:
     cfg.windows.netsh_exe = paths.expand_env(cfg.windows.netsh_exe) or _default_netsh()
     cfg.windows.wsl_exe = paths.expand_env(cfg.windows.wsl_exe) or _default_wsl()
 
+    # H-4: un export redactado no debe inyectarse como credencial literal
+    for v in cfg.vps_list:
+        if v.password == REDACTED:
+            v.password = ""
+    if cfg.ui.web_panel_token == REDACTED:
+        cfg.ui.web_panel_token = ""
+    if cfg.mcp.token == REDACTED:
+        cfg.mcp.token = ""
+
     _validate(cfg)
     return cfg
 
@@ -419,6 +433,16 @@ class ConfigStore:
             paths.backups_dir() if backup_dir is None else paths.Path(backup_dir)
         )
         self.backup_dir.mkdir(parents=True, exist_ok=True)
+        # H-4: vault DPAPI. Si la config vive en la ruta por defecto se usa
+        # el SecretsStore global; si es una ruta alternativa (tests/portable)
+        # el vault queda JUNTO a esa config (nunca se mezclan).
+        from wsl_port.vendor.port_forwarder.utils import secrets as _sec_mod
+
+        if self.path.parent == paths.config_path().parent:
+            self._secrets = _sec_mod.SecretsStore()
+        else:
+            self._secrets = _sec_mod.SecretsStore(
+                path=self.path.parent / "secrets.dat")
         self.cfg = self.load()
 
     # -- carga / persistencia ------------------------------------------------
@@ -428,16 +452,42 @@ class ConfigStore:
             cfg = AppConfig()
             self._write(cfg, backup=False)
             # Aplica defaults (paths de exe) y validacion como si viniera de disco.
-            return parse_config(_to_dict(cfg))
-        try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as e:
-            raise ConfigError(
-                f"config.json corrupto ({e}). "
-                "Usa 'config import <archivo>' para restaurar un backup "
-                "(backups\\ ) o config/config.example.json."
-            ) from e
-        return parse_config(data)
+            cfg = parse_config(_to_dict(cfg))
+        else:
+            try:
+                data = json.loads(self.path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as e:
+                raise ConfigError(
+                    f"config.json corrupto ({e}). "
+                    "Usa 'config import <archivo>' para restaurar un backup "
+                    "(backups\\ ) o config/config.example.json."
+                ) from e
+            cfg = parse_config(data)
+        self._hydrate_secrets(cfg)
+        return cfg
+
+    def _hydrate_secrets(self, cfg: AppConfig) -> None:
+        """Rellena en memoria los secretos que en disco son referencias."""
+        s = self._secrets
+        for v in cfg.vps_list:
+            if not v.password and v.secret_ref:
+                try:
+                    if s.check(v.secret_ref):
+                        v.password = s.get(v.secret_ref)
+                except Exception:  # noqa: BLE001 - vault corrupto: seguir sin pw
+                    pass
+        if not cfg.ui.web_panel_token:
+            try:
+                if s.check("web_panel_token"):
+                    cfg.ui.web_panel_token = s.get("web_panel_token")
+            except Exception:  # noqa: BLE001
+                pass
+        if not cfg.mcp.token:
+            try:
+                if s.check("mcp_token"):
+                    cfg.mcp.token = s.get("mcp_token")
+            except Exception:  # noqa: BLE001
+                pass
 
     def save(self) -> None:
         # Nunca persistir config invalida (12.1: modo seguro ante config rota).
@@ -453,10 +503,44 @@ class ConfigStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".json.tmp")
         tmp.write_text(
-            json.dumps(_to_dict(cfg), indent=2, ensure_ascii=False),
+            json.dumps(self._migrate_secrets(cfg), indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
         tmp.replace(self.path)
+
+    def _migrate_secrets(self, cfg: AppConfig) -> dict[str, Any]:
+        """H-4: dict listo para disco; toda credencial en claro pasa al vault.
+
+        En memoria cfg conserva los valores (el resto del programa no se
+        entera); en config.json solo quedan referencias / cadena vacia.
+        """
+        data = _to_dict(cfg)
+
+        def _stash(container: dict, key: str, ref: str,
+                   set_ref_key: str | None = None) -> None:
+            val = container.get(key)
+            if not isinstance(val, str) or not val:
+                return
+            if val == REDACTED:
+                container[key] = ""
+                return
+            try:
+                self._secrets.set(ref, val)
+            except Exception:  # noqa: BLE001 - si no cifra, NO escribe en claro
+                __import__("logging").getLogger("port-forwarder.config").error(
+                    "no se pudo cifrar '%s': se descarta del disco", ref)
+                container[key] = ""
+                return
+            container[key] = ""
+            if set_ref_key:
+                container[set_ref_key] = ref
+
+        for v in data.get("vps_list") or []:
+            ref = v.get("secret_ref") or f"vps:{v.get('id')}"
+            _stash(v, "password", ref, set_ref_key="secret_ref")
+        _stash(data.get("ui") or {}, "web_panel_token", "web_panel_token")
+        _stash(data.get("mcp") or {}, "token", "mcp_token")
+        return data
 
     def reload(self) -> AppConfig:
         self.cfg = self.load()
@@ -536,4 +620,17 @@ class ConfigStore:
         return _to_dict(self.cfg)
 
     def as_yaml_safe_json(self) -> str:
-        return json.dumps(_to_dict(self.cfg), indent=2, ensure_ascii=False)
+        """H-4: exportacion portable SIN credenciales (marcador <redactado>).
+
+        Tras la migracion de _migrate_secrets los valores ya son vacios en
+        disco; esto protege ademas el caso en memoria (recien editado).
+        """
+        data = _to_dict(self.cfg)
+        for v in data.get("vps_list") or []:
+            if v.get("password"):
+                v["password"] = REDACTED
+        if (data.get("ui") or {}).get("web_panel_token"):
+            data["ui"]["web_panel_token"] = REDACTED
+        if (data.get("mcp") or {}).get("token"):
+            data["mcp"]["token"] = REDACTED
+        return json.dumps(data, indent=2, ensure_ascii=False)

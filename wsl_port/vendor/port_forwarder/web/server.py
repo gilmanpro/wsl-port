@@ -715,6 +715,7 @@ class PanelHandler(BaseHTTPRequestHandler):
                         "port": cfg.port,
                         "token_required": cfg.token_required,
                         "token": cfg.token,
+                        "expose_exec": bool(getattr(cfg, "expose_exec", True)),
                         "vps_export_enabled": cfg.vps_export_enabled,
                         "vps_target_port": cfg.vps_target_port,
                         "vps_target_host": cfg.vps_target_host
@@ -1035,6 +1036,16 @@ class WebPanel:
         self.supervisor = supervisor
         self.port = port
         self.bind = bind
+        # H-1: sin token el panel quedaria fail-open (_authed devuelve True).
+        # Nunca: generar uno efimero fuerte y mostrarlo en el log para que el
+        # operador lo copie desde Ajustes (o defina el suyo).
+        self.token_generated = not token
+        if not token:
+            import secrets as _secrets
+
+            token = _secrets.token_urlsafe(24)
+            log.warning("web_panel sin token: generado uno efimero: %s "
+                        "(definelo en Ajustes para uso permanente)", token)
         self.token = token
         self.metrics = metrics or supervisor.metrics
         self.dashboard_html = dashboard_html or DASHBOARD_HTML
@@ -1712,6 +1723,7 @@ class WebPanel:
                         port=int(body.get("port", 8796)),
                         token_required=token_required,
                         token=str(token_in).strip(),
+                        expose_exec=bool(body.get("expose_exec", True)),
                         vps_export_enabled=vps_export_enabled,
                         vps_target_port=int(body.get("vps_target_port", 55872)),
                         vps_target_host=str(body.get("vps_target_host", ""))
@@ -2200,6 +2212,9 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       </div>
       <div class="row">
         <label><input type="checkbox" id="mcp-token-required"> Requerir token</label>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="mcp-expose-exec"> Exponer <code>wsl_exec</code> <span style="color:var(--err)">(ejecuta comandos como root en tus distros — RCE)</span></label>
       </div>
       <div class="row">
         <label for="mcp-token">Token MCP:</label>
@@ -2742,6 +2757,7 @@ function loadMcpSettings() {
       document.getElementById('mcp-transport').value = data.settings.transport || 'stdio';
       document.getElementById('mcp-port').value = data.settings.port || 8796;
       document.getElementById('mcp-token-required').checked = data.settings.token_required;
+      document.getElementById('mcp-expose-exec').checked = data.settings.expose_exec !== false;
       document.getElementById('mcp-token').value = data.settings.token || '';
       
       // Cargar configuración de exportación al VPS
@@ -2777,6 +2793,7 @@ function saveMcpSettings() {
     port: parseInt(document.getElementById('mcp-port').value),
     token_required: document.getElementById('mcp-token-required').checked,
     token: document.getElementById('mcp-token').value,
+    expose_exec: document.getElementById('mcp-expose-exec').checked,
     vps_export_enabled: document.getElementById('mcp-vps-export-enabled').checked,
     vps_target_port: parseInt(document.getElementById('mcp-vps-target-port').value),
     vps_target_host: document.getElementById('mcp-vps-target-host').value

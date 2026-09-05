@@ -229,9 +229,28 @@ class Supervisor:
             return
         port = int(cfg.port or 8796)
         token = cfg.token if cfg.token_required else ""
+        # H-1: si MCP esta exportado al VPS (alcance publico por el tunel),
+        # JAMAS servir sin bearer: autogenerar un token fuerte y persistirlo.
+        if cfg.vps_export_enabled and not token:
+            import secrets as _secrets
+
+            token = _secrets.token_urlsafe(32)
+            cfg.token = token
+            cfg.token_required = True
+            try:
+                self.store.save()
+            except Exception:  # noqa: BLE001
+                log.warning("no se pudo persistir el token MCP autogenerado")
+            self.metrics.record_event("mcp_token_forzado",
+                                      reason="export publico sin token")
+            log.warning("MCP exportado sin token: generado automaticamente "
+                        "(revisar Ajustes MCP)")
+        allow_exec = bool(getattr(cfg, "expose_exec", True))
+        srv = self._mcp_http
         if srv is not None and srv.running and srv.port == port \
-                and srv.bearer == token:
-            return  # ya esta en el puerto/clave deseados
+                and srv.bearer == token \
+                and getattr(srv, "expose_exec", True) == allow_exec:
+            return  # ya esta en el puerto/clave/modo deseados
         if srv is not None:
             try:
                 srv.stop()
@@ -244,11 +263,13 @@ class Supervisor:
 
             svc = AppService(self.store, supervisor=self)
             srv = McpHttpServer(service=svc, host="127.0.0.1",
-                                port=port, token=token)
+                                port=port, token=token,
+                                expose_exec=allow_exec)
             srv.start()
             self._mcp_http = srv
             self.metrics.record_event("mcp_http_started", port=port,
-                                      token_required=bool(cfg.token_required))
+                                      token_required=bool(cfg.token_required),
+                                      expose_exec=allow_exec)
             log.info("MCP HTTP listo en 127.0.0.1:%s", port)
         except Exception as e:  # noqa: BLE001 - puerto ocupado, etc.
             log.error("MCP HTTP no arranco: %s", e)

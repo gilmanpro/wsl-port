@@ -638,6 +638,20 @@ def _build_settings_tab(nb, sup: Supervisor, root) -> None:
     web_pw_var = tk.StringVar()
     ttk.Label(form, text="Clave (obligatoria):").grid(row=10, column=0, sticky="w")
     ttk.Entry(form, textvariable=web_pw_var, width=22, show="*").grid(row=10, column=1, sticky="w", padx=6)
+
+    def _gen_web_key() -> None:
+        import secrets
+
+        web_pw_var.set(secrets.token_urlsafe(32))
+        messagebox.showinfo(
+            "Port Forwarding",
+            "Clave fuerte generada (43 caracteres). Pulsa Guardar ajustes y "
+            "copia la clave de donde la uses (el navegador pedira esta).",
+            parent=root,
+        )
+
+    ttk.Button(form, text="Generar clave fuerte", bootstyle="info-outline",
+               command=_gen_web_key).grid(row=10, column=2, sticky="w")
     ttk.Label(form, text="Sin clave el panel no arranca. Si la dejas vacia se conserva la actual.", style="Muted.TLabel").grid(row=11, column=0, columnspan=3, sticky="w")
 
     ttk.Separator(form).grid(row=12, column=0, columnspan=3, sticky="ew", pady=8)
@@ -657,20 +671,23 @@ def _build_settings_tab(nb, sup: Supervisor, root) -> None:
     mcp_key_var = tk.StringVar()
     ttk.Label(form, text="Token:").grid(row=18, column=0, sticky="w")
     ttk.Entry(form, textvariable=mcp_key_var, width=22, show="*").grid(row=18, column=1, sticky="w", padx=6)
-    ttk.Label(form, text="Si exiges token y lo dejas vacio, se genera uno aleatorio.", style="Muted.TLabel").grid(row=19, column=0, columnspan=3, sticky="w")
+    mcp_exec_var = tk.BooleanVar(value=getattr(mcp, "expose_exec", True))
+    ttk.Checkbutton(form, text="Exponer wsl_exec (RCE en distros)",
+                    variable=mcp_exec_var).grid(row=19, column=0, columnspan=3, sticky="w")
+    ttk.Label(form, text="Si exiges token y lo dejas vacio, se genera uno aleatorio.", style="Muted.TLabel").grid(row=20, column=0, columnspan=3, sticky="w")
 
-    ttk.Separator(form).grid(row=20, column=0, columnspan=3, sticky="ew", pady=8)
+    ttk.Separator(form).grid(row=21, column=0, columnspan=3, sticky="ew", pady=8)
 
     # -- API -----------------------------------------------------------------
-    ttk.Label(form, text="API REST", style="Header.TLabel").grid(row=21, column=0, columnspan=3, sticky="w", pady=(0, 4))
+    ttk.Label(form, text="API REST", style="Header.TLabel").grid(row=22, column=0, columnspan=3, sticky="w", pady=(0, 4))
     api_var = tk.BooleanVar(value=api.enabled)
-    ttk.Checkbutton(form, text="API REST habilitada (loopback)", variable=api_var).grid(row=22, column=0, columnspan=2, sticky="w", pady=3)
+    ttk.Checkbutton(form, text="API REST habilitada (loopback)", variable=api_var).grid(row=23, column=0, columnspan=2, sticky="w", pady=3)
     api_port_var = tk.StringVar(value=str(api.port))
-    ttk.Label(form, text="Puerto API:").grid(row=23, column=0, sticky="w")
-    ttk.Entry(form, textvariable=api_port_var, width=8).grid(row=23, column=1, sticky="w", padx=6)
+    ttk.Label(form, text="Puerto API:").grid(row=24, column=0, sticky="w")
+    ttk.Entry(form, textvariable=api_port_var, width=8).grid(row=24, column=1, sticky="w", padx=6)
     api_scope_var = tk.StringVar(value="write")
-    ttk.Label(form, text="Scope del token:").grid(row=24, column=0, sticky="w")
-    ttk.Combobox(form, textvariable=api_scope_var, values=["read", "write", "admin"], state="readonly", width=8).grid(row=24, column=1, sticky="w", padx=6)
+    ttk.Label(form, text="Scope del token:").grid(row=25, column=0, sticky="w")
+    ttk.Combobox(form, textvariable=api_scope_var, values=["read", "write", "admin"], state="readonly", width=8).grid(row=25, column=1, sticky="w", padx=6)
 
     def _gen_api_token() -> None:
         """Crea un token para la API REST (equivale a 'api tokens create')."""
@@ -689,11 +706,11 @@ def _build_settings_tab(nb, sup: Supervisor, root) -> None:
             parent=root,
         )
 
-    ttk.Button(form, text="Generar token API", bootstyle="info", command=_gen_api_token).grid(row=25, column=1, sticky="w", padx=6, pady=3)
-    ttk.Label(form, text="El token se genera (no se escribe) y se guarda con hash; se muestra UNA sola vez.", style="Muted.TLabel").grid(row=26, column=0, columnspan=3, sticky="w")
+    ttk.Button(form, text="Generar token API", bootstyle="info", command=_gen_api_token).grid(row=26, column=1, sticky="w", padx=6, pady=3)
+    ttk.Label(form, text="El token se genera (no se escribe) y se guarda con hash; se muestra UNA sola vez.", style="Muted.TLabel").grid(row=27, column=0, columnspan=3, sticky="w")
 
     btns = ttk.Frame(form)
-    btns.grid(row=27, column=0, columnspan=3, sticky="w", pady=10)
+    btns.grid(row=28, column=0, columnspan=3, sticky="w", pady=10)
     ttk.Button(btns, text="Guardar ajustes", bootstyle="info", command=lambda: _save()).pack(side="left", padx=2)
     ttk.Button(btns, text="Abrir panel web", bootstyle="success", command=lambda: _open_web()).pack(side="left", padx=2)
 
@@ -728,7 +745,30 @@ def _build_settings_tab(nb, sup: Supervisor, root) -> None:
         cfg.ui.web_panel_enabled = web_on
         cfg.ui.web_panel_port = web_port
         cfg.ui.web_panel_bind = web_bind_var.get().strip() or "127.0.0.1"
+        # H-3: validar fortaleza de la clave cuando el panel se expone (bind
+        # distinto de loopback => cualquier host de la red puede intentarla).
+        bind = cfg.ui.web_panel_bind
+        if web_on and bind not in ("127.0.0.1", "localhost", "::1"):
+            effective = web_pw or cfg.ui.web_panel_token or \
+                (_sec.get("web_panel_token") if _sec.check("web_panel_token") else "")
+            if len(effective) < 24:
+                messagebox.showerror(
+                    "Port Forwarding",
+                    "Con bind expuesto (%s) la clave del panel debe tener "
+                    "al menos 24 caracteres.\nUsa 'Generar clave fuerte'.\n"
+                    "Ademas el panel sirve HTTP sin TLS: considere bind "
+                    "127.0.0.1 + tunel SSH." % bind,
+                    parent=root,
+                )
+                return
         if web_pw:
+            if len(web_pw) < 12:
+                messagebox.showerror(
+                    "Port Forwarding",
+                    "Clave demasiado corta (minimo 12 caracteres).",
+                    parent=root,
+                )
+                return
             # La clave se guarda SOLO cifrada (DPAPI) en secrets; nunca en claro.
             _sec.set("web_panel_token", web_pw)
             cfg.ui.web_panel_token = ""
@@ -745,6 +785,8 @@ def _build_settings_tab(nb, sup: Supervisor, root) -> None:
         cfg.mcp.transport = mcp_transport_var.get()
         cfg.mcp.port = mcp_port
         cfg.mcp.token_required = mcp_token_var.get()
+        # C-1: interruptor de la herramienta RCE (wsl_exec)
+        cfg.mcp.expose_exec = mcp_exec_var.get()
         if mcp_token:
             cfg.mcp.token = mcp_token
 
