@@ -452,12 +452,25 @@ def export_distro(name: str, target: str) -> dict:
         return {"ok": False, "error": str(e)}
 
 
+def resolve_install_dir(install_dir: str, name: str) -> str:
+    """WSL exige una carpeta propia por distro (ERROR_FILE_EXISTS si esta ocupada).
+
+    Si install_dir ya contiene una distro (base.tar o ext4.vhdx), se usa la
+    subcarpeta <install_dir>/<name>.
+    """
+    p = Path(install_dir)
+    if p.is_dir() and ((p / "base.tar").exists() or (p / "ext4.vhdx").exists()):
+        p = p / name
+    return str(p)
+
+
 def import_distro(source: str, name: str, install_dir: str) -> dict:
     if not wsl_health_check():
         return {"ok": False, "error": "WSL no responde - reinicia el PC"}
     try:
+        install_dir = resolve_install_dir(install_dir, name)
         r = wsl_provider().import_distro(source, name, install_dir)
-        return {"ok": r.ok, "output": r.output, "error": r.error}
+        return {"ok": r.ok, "output": r.output, "error": r.error, "install_dir": install_dir}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

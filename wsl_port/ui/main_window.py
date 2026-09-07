@@ -1022,8 +1022,9 @@ class MainWindow:
         def _work():
             r = core.import_distro(source, distro_name, install_dir)
             if r.get("ok"):
-                self._notify("Importar", f"Distro '{distro_name}' importada", "success")
-                messagebox.showinfo("Importar", f"Distro '{distro_name}' importada correctamente")
+                final_dir = r.get("install_dir") or install_dir
+                self._notify("Importar", f"Distro '{distro_name}' importada en {final_dir}", "success")
+                messagebox.showinfo("Importar", f"Distro '{distro_name}' importada correctamente en:\n{final_dir}")
             else:
                 self._notify("Importar", f"Error: {r.get('error')}", "error")
                 messagebox.showerror("Importar", f"Error: {r.get('error')}")
