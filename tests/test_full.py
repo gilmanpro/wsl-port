@@ -474,6 +474,7 @@ def gui(monkeypatch, mock_wsl, empty_state):
     win.mcp_port_var = _FakeVar("8782")
     win.mcp_token_var = _FakeBool(True)
     win.mcp_key_var = _FakeVar()
+    win.mcp_exec_var = _FakeBool(False)
     win.theme_var = _FakeVar("superhero")
     win.tray_var = _FakeBool(True)
     win.keep_tunnels_var = _FakeBool(True)
