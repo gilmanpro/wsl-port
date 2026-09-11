@@ -10,7 +10,7 @@
 
 ### 1. wsl-port — WSL + Internet en 1 clic
 
-**Repo:** [github.com/gilmanpro/wsl-port](https://github.com/gilmanpro/wsl-port)
+**Repo:** [github.com/gilmanpro/wsl-port-unified](https://github.com/gilmanpro/wsl-port-unified)
 
 Aplicacion unificada que fusiona **WSL Manager** (gestion de distros WSL) y **Port Forwarding Manager** (tuneles SSH hacia VPS) en una sola ventana y un solo comando.
 
@@ -35,7 +35,7 @@ Aplicacion unificada que fusiona **WSL Manager** (gestion de distros WSL) y **Po
 
 ### 2. WSL Manager GUI
 
-**Repo:** [github.com/gilmanpro/wsl-manager-gui](https://github.com/gilmanpro/wsl-manager-gui)
+**Repo:** [github.com/gilmanpro/wsl-distro-manager](https://github.com/gilmanpro/wsl-distro-manager)
 
 Aplicacion de escritorio para gestionar distribuciones WSL2 con GUI en system tray, CLI operativo, API REST, servidor MCP y panel web local.
 
@@ -55,7 +55,7 @@ Aplicacion de escritorio para gestionar distribuciones WSL2 con GUI en system tr
 
 ### 3. Port Forwarder App
 
-**Repo:** [github.com/gilmanpro/port-forwarder-app](https://github.com/gilmanpro/port-forwarder-app)
+**Repo:** [github.com/gilmanpro/portforward-tunnels](https://github.com/gilmanpro/portforward-tunnels)
 
 Herramienta para administrar redirecciones de puertos entre Windows y WSL, tuneles SSH hacia VPS, supervision automatica, health checks, alertas, panel web, API REST, CLI y MCP.
 

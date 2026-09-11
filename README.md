@@ -15,9 +15,9 @@
 
 | Repositorio | Descripción | Rol |
 |---|---|---|
-| **[wsl-port](https://github.com/gilmanpro/wsl-port)** | **App unificada** (este repo) — WSL + Internet en 1 clic | ⭐ Recomendado |
-| [wsl-manager-gui](https://github.com/gilmanpro/wsl-manager-gui) | Gestión de distros WSL2 (GUI + CLI + panel web + MCP) | Base · vendored en wsl-port |
-| [port-forwarder-app](https://github.com/gilmanpro/port-forwarder-app) | Port forwarding + túneles SSH al VPS (GUI + CLI + panel web + MCP) | Base · vendored en wsl-port |
+| **[wsl-port-unified](https://github.com/gilmanpro/wsl-port-unified)** | **App unificada** (este repo) — WSL + Internet en 1 clic | ⭐ Recomendado |
+| [wsl-distro-manager](https://github.com/gilmanpro/wsl-distro-manager) | Gestión de distros WSL2 (GUI + CLI + panel web + MCP) | Base · vendored en wsl-port |
+| [portforward-tunnels](https://github.com/gilmanpro/portforward-tunnels) | Port forwarding + túneles SSH al VPS (GUI + CLI + panel web + MCP) | Base · vendored en wsl-port |
 
 ---
 
@@ -334,5 +334,5 @@ Las contribuciones son bienvenidas! Por favor lee [CONTRIBUTING.md](CONTRIBUTING
 ## Licencia
 
 MIT — ver [LICENSE](LICENSE) y los repos base:
-[WSL Manager](https://github.com/gilmanpro/wsl-manager-gui) ·
-[Port Forwarder](https://github.com/gilmanpro/port-forwarder-app)
+[WSL Manager](https://github.com/gilmanpro/wsl-distro-manager) ·
+[Port Forwarder](https://github.com/gilmanpro/portforward-tunnels)
